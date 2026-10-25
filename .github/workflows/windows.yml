@@ -15,6 +15,10 @@ jobs:
     timeout-minutes: 60
     env:
       SCCACHE_GHA_ENABLED: 'true'
+      # The offscreen platform the tests run on looks for fonts in Qt's own
+      # lib/fonts, which Qt no longer ships; without any, text has no size
+      # and click targets in the views collapse.
+      QT_QPA_FONTDIR: 'C:\Windows\Fonts'
 
     steps:
       - name: Checkout
