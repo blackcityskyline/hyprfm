@@ -31,12 +31,11 @@ Q.Dialog {
     }
 
     function parentDirForPath(path) {
-        var slashIndex = path.lastIndexOf("/")
-        return slashIndex > 0 ? path.substring(0, slashIndex) : "/"
+        return fileOps.parentPath(path)
     }
 
     function joinPath(dirPath, name) {
-        return dirPath === "/" ? "/" + name : dirPath + "/" + name
+        return fileOps.joinPath(dirPath, name)
     }
 
     function splitName(name) {

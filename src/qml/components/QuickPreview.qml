@@ -149,8 +149,8 @@ Item {
     readonly property url markdownBaseUrl: {
         if (!root.isMarkdown || root.filePath === "")
             return ""
-        var dir = root.filePath.substring(0, root.filePath.lastIndexOf("/"))
-        return "file://" + dir.split("/").map(encodeURIComponent).join("/") + "/"
+        var dir = fileOps.localFileUrl(fileOps.parentPath(root.filePath)).toString()
+        return dir.endsWith("/") ? dir : dir + "/"
     }
     // Qt draws a rich-text image at its native size, so the screenshots a
     // README points at (2500 px wide is normal) run far outside the pane and
@@ -204,7 +204,7 @@ Item {
             return ""
         if (isVideo || isTrashUri || isSvg)
             return "image://thumbnail/" + filePath
-        return "file://" + filePath
+        return fileOps.localFileUrl(filePath)
     }
     readonly property string visualStatusText: {
         if (isVideo)

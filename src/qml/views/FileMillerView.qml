@@ -1110,7 +1110,7 @@ FocusScope {
                     var paths = root.dropPaths(drop)
                     if (paths.length === 0) return
                     var allSameDir = paths.every(function(p) {
-                        var parentDir = p.substring(0, p.lastIndexOf("/"))
+                        var parentDir = fileOps.parentPath(p)
                         return parentDir === root.currentPath
                     })
                     if (allSameDir) return
@@ -1315,7 +1315,7 @@ FocusScope {
             readonly property string visualSource: {
                 if (!hasVisualPreview || previewFilePath === "") return ""
                 if (isVideo || isTrashUri || isSvg) return "image://thumbnail/" + previewFilePath
-                return "file://" + previewFilePath
+                return fileOps.localFileUrl(previewFilePath)
             }
             readonly property string pdfImageSource: {
                 if (!isPdf || !pdfPreview.localPath || pdfPreview.error !== "")
@@ -1383,9 +1383,8 @@ FocusScope {
             readonly property url markdownBaseUrl: {
                 if (!previewColumn.isMarkdown || previewColumn.previewFilePath === "")
                     return ""
-                var path = previewColumn.previewFilePath
-                var dir = path.substring(0, path.lastIndexOf("/"))
-                return "file://" + dir.split("/").map(encodeURIComponent).join("/") + "/"
+                var dir = fileOps.localFileUrl(fileOps.parentPath(previewColumn.previewFilePath)).toString()
+                return dir.endsWith("/") ? dir : dir + "/"
             }
 
             readonly property string previewFileName: {

@@ -104,6 +104,17 @@ class TestFileOperations : public QObject
     }
 
 private slots:
+    // QML builds paths through these; string slicing broke at "/" and "C:/".
+    void testPathHelpersAtFilesystemRoot()
+    {
+        FileOperations ops;
+        const QString root = QDir::rootPath();   // "/" or "C:/"
+        QCOMPARE(ops.joinPath(root, QStringLiteral("x")), root + QStringLiteral("x"));
+        QCOMPARE(ops.parentPath(root + QStringLiteral("x")), root);
+        QCOMPARE(ops.localFileUrl(root + QStringLiteral("a#b")).toLocalFile(), root + QStringLiteral("a#b"));
+        QVERIFY(ops.localFileUrl(root + QStringLiteral("x")).toString().startsWith(QStringLiteral("file:///")));
+    }
+
     void initTestCase()
     {
         QStandardPaths::setTestModeEnabled(true);

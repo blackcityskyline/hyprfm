@@ -814,7 +814,7 @@ ApplicationWindow {
                 return
             }
 
-            var targetPath = transferDestinationPath + "/" + name
+            var targetPath = fileOps.joinPath(transferDestinationPath, name)
             if (transferReservedTargets[targetPath] || fileOps.pathExists(targetPath) || targetPath === item.sourcePath) {
                 root.conflictDialog.errorText.text = "That name already exists"
                 return
@@ -1598,7 +1598,7 @@ ApplicationWindow {
                     var name = renameField.text.trim()
                     if (renameTargetPath === "" || name === "") return
                     var parentDir = fileOps.parentPath(renameTargetPath)
-                    var targetPath = parentDir + "/" + name
+                    var targetPath = fileOps.joinPath(parentDir, name)
                     if (fileOps.pathExists(targetPath)) {
                         renameErrorText.text = "\"" + name + "\" already exists"
                         return
@@ -1780,7 +1780,7 @@ ApplicationWindow {
                 function accept() {
                     var name = newFolderField.text.trim()
                     if (newItemParentPath === "" || name === "") return
-                    var createdPath = newItemParentPath + "/" + name
+                    var createdPath = fileOps.joinPath(newItemParentPath, name)
                     if (fileOps.pathExists(createdPath)) {
                         newFolderErrorText.text = "\"" + name + "\" already exists"
                         return
@@ -1957,7 +1957,7 @@ ApplicationWindow {
                 function accept() {
                     var name = newFileField.text.trim()
                     if (newItemParentPath === "" || name === "") return
-                    var createdPath = newItemParentPath + "/" + name
+                    var createdPath = fileOps.joinPath(newItemParentPath, name)
                     if (fileOps.pathExists(createdPath)) {
                         newFileErrorText.text = "\"" + name + "\" already exists"
                         return

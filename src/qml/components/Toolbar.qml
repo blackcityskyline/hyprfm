@@ -652,7 +652,7 @@ Rectangle {
                                         if (paths.length === 0) return
                                         // Don't move files into the directory they're already in
                                         var allSameDir = paths.every(function(p) {
-                                            var parentDir = p.substring(0, p.lastIndexOf("/"))
+                                            var parentDir = fileOps.parentPath(p)
                                             return parentDir === destPath
                                         })
                                         if (allSameDir) return

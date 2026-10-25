@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QUrl>
 #include <QProcess>
 #include <QByteArray>
 #include <QHash>
@@ -68,6 +69,9 @@ public:
     Q_INVOKABLE bool isRemotePath(const QString &path) const;
     Q_INVOKABLE bool isSlowPath(const QString &path) const;
     Q_INVOKABLE QString parentPath(const QString &path) const;
+    Q_INVOKABLE QString joinPath(const QString &dirPath, const QString &name) const;
+    // file:// URL for a local path; "file://" + "C:/x" would make C: the host.
+    Q_INVOKABLE QUrl localFileUrl(const QString &path) const;
     Q_INVOKABLE QString displayNameForPath(const QString &path) const;
     Q_INVOKABLE QVariantList breadcrumbSegments(const QString &path) const;
     Q_INVOKABLE int emptyTrash();

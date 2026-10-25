@@ -1812,6 +1812,16 @@ QString FileOperations::parentPath(const QString &path) const
     return parentLocation(path);
 }
 
+QString FileOperations::joinPath(const QString &dirPath, const QString &name) const
+{
+    return joinLocation(dirPath, name);
+}
+
+QUrl FileOperations::localFileUrl(const QString &path) const
+{
+    return QUrl::fromLocalFile(path);
+}
+
 QString FileOperations::displayNameForPath(const QString &path) const
 {
     return locationFileName(path);
