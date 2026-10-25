@@ -188,7 +188,7 @@ private:
         m_searchDirs.append("/usr/local/share/icons");
 
         const QString xdgDirs = qEnvironmentVariable("XDG_DATA_DIRS", "/usr/share:/usr/local/share");
-        for (const auto &dir : xdgDirs.split(':')) {
+        for (const auto &dir : xdgDirs.split(QDir::listSeparator())) {
             const QString iconDir = dir + "/icons";
             if (!m_searchDirs.contains(iconDir))
                 m_searchDirs.append(iconDir);

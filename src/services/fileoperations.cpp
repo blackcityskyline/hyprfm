@@ -703,6 +703,9 @@ QVariantList buildBreadcrumbs(const QString &path)
 
     QString accumulated;
     QStringList parts = normalized.split('/', Qt::SkipEmptyParts);
+    // A Windows path starts at its drive: "C:/Users" -> [C:] [Users], with
+    // the drive crumb pointing at "C:/", not "/C:".
+    const bool driveRooted = normalized.size() >= 2 && normalized.at(1) == QLatin1Char(':');
 
     // Anything inside the user's home starts at a single "Home" crumb. Walking
     // the real ancestors instead would render "/home" and "/home/<user>" side
@@ -714,6 +717,10 @@ QVariantList buildBreadcrumbs(const QString &path)
                                     {QStringLiteral("fullPath"), home}});
         accumulated = home;
         parts = normalized.mid(home.size()).split('/', Qt::SkipEmptyParts);
+    } else if (driveRooted && !parts.isEmpty()) {
+        accumulated = parts.takeFirst();
+        segments.append(QVariantMap{{QStringLiteral("label"), accumulated},
+                                    {QStringLiteral("fullPath"), accumulated + QLatin1Char('/')}});
     }
 
     for (const QString &part : parts) {
@@ -1490,6 +1497,10 @@ int FileOperations::deleteFiles(const QStringList &paths)
                     bool removed = false;
                     if (info.isDir() && !info.isSymLink())
                         removed = QDir(normalized).removeRecursively();
+#ifdef Q_OS_WIN
+                    else if (info.isDir())   // a directory link is removed as a directory
+                        removed = QDir().rmdir(normalized);
+#endif
                     else
                         removed = QFile::remove(normalized);
 

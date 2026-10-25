@@ -120,7 +120,7 @@ QStringList iconSearchDirs()
     searchDirs.append("/usr/local/share/icons");
 
     const QString xdgDirs = qEnvironmentVariable("XDG_DATA_DIRS", "/usr/share:/usr/local/share");
-    for (const QString &dir : xdgDirs.split(':')) {
+    for (const QString &dir : xdgDirs.split(QDir::listSeparator())) {
         const QString iconDir = dir + "/icons";
         if (!searchDirs.contains(iconDir))
             searchDirs.append(iconDir);
@@ -1395,7 +1395,7 @@ void ConfigManager::loadFolderSort()
         const QString path = it.key();
         // Prune stale local paths that no longer exist. Non-local locations
         // (trash:/, sftp://, …) are kept since they can't be stat'd.
-        if (path.startsWith(QLatin1Char('/')) && !QFileInfo::exists(path)) {
+        if (QDir::isAbsolutePath(path) && !QFileInfo::exists(path)) {
             pruned = true;
             continue;
         }
