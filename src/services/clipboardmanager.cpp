@@ -48,6 +48,14 @@ void writePathsToSystemClipboard(const QStringList &paths, bool cut)
     }
     mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnome);
 
+#ifdef Q_OS_WIN
+    // Explorer's cut marker: a DWORD DROPEFFECT, 2 = move, 5 = copy|link.
+    // Qt already offers the URLs as CF_HDROP.
+    const quint32 effect = cut ? 2u : 5u;
+    mime->setData(QStringLiteral("application/x-qt-windows-mime;value=\"Preferred DropEffect\""),
+                  QByteArray(reinterpret_cast<const char *>(&effect), sizeof effect));
+#endif
+
     cb->setMimeData(mime);
 }
 
