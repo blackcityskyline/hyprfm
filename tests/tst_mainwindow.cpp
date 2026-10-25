@@ -46,6 +46,33 @@
 #include "services/undomanager.h"
 
 // ponytail: temporary, counts a QML signal by name for the Windows diagnostics.
+class EventLog : public QObject
+{
+public:
+    QString tag;
+    QStringList *out = nullptr;
+    bool eventFilter(QObject *, QEvent *e) override
+    {
+        switch (e->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease:
+        case QEvent::MouseButtonDblClick:
+        case QEvent::UngrabMouse: {
+            QString t = QString::number(int(e->type()));
+            if (e->type() != QEvent::UngrabMouse) {
+                auto *me = static_cast<QMouseEvent *>(e);
+                t += QStringLiteral("m%1").arg(int(me->modifiers()), 0, 16);
+            }
+            *out << tag + t;
+            break;
+        }
+        default:
+            break;
+        }
+        return false;
+    }
+};
+
 class Counter : public QObject
 {
     Q_OBJECT
@@ -1034,16 +1061,30 @@ private slots:
             const QPoint a = app.center(tile);
             Counter c;
             connect(tile->parentItem()->parentItem(), SIGNAL(fileActivated(QString,bool)), &c, SLOT(count()));
+            QStringList events;
+            EventLog winLog, maLog;
+            winLog.tag = QStringLiteral("W");
+            maLog.tag = QStringLiteral("M");
+            winLog.out = maLog.out = &events;
+            app.window->installEventFilter(&winLog);
+            QQuickItem *ma = nullptr;
+            for (QQuickItem *child : tile->childItems())
+                if (QByteArray(child->metaObject()->className()).contains("MouseArea"))
+                    ma = child;
+            if (ma)
+                ma->installEventFilter(&maLog);
             if (mode == 2) {
                 QTest::mouseClick(app.window, Qt::LeftButton, Qt::ControlModifier, a);
                 QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+                events << QStringLiteral("|");
             }
             if (mode == 1)
                 QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
             else
                 QTest::mouseClick(app.window, Qt::LeftButton, {}, a);
             QTest::qWait(500);
-            out << QStringLiteral("%1:%2").arg(QStringList{"click", "dclick", "ctrl+click"}[mode]).arg(c.n);
+            out << QStringLiteral("%1:%2[%3%4]").arg(QStringList{"click", "dclick", "ctrl+click"}[mode]).arg(c.n)
+                       .arg(ma ? QString() : QStringLiteral("noMA ")).arg(events.join(QLatin1Char(',')));
         }
         QSKIP(qPrintable(QStringLiteral("probe ") + out.join(QLatin1Char(' '))));
     }
