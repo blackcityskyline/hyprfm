@@ -45,6 +45,16 @@
 #include "services/themeloader.h"
 #include "services/undomanager.h"
 
+// ponytail: temporary, counts a QML signal by name for the Windows diagnostics.
+class Counter : public QObject
+{
+    Q_OBJECT
+public:
+    int n = 0;
+public slots:
+    void count() { ++n; }
+};
+
 class TestMainWindow : public QObject
 {
     Q_OBJECT
@@ -964,6 +974,7 @@ private slots:
         connect(tab, &TabModel::currentPathChanged, this,
                 [&] { visited << tab->currentPath(); });
         // ponytail: temporary Windows diagnostics, remove once this passes there.
+        Counter activationCounter;
         QStringList chain;
         for (QQuickItem *it = tile; it; it = it->parentItem()) {
             const QVariant fp = it->property("filePath");
@@ -974,10 +985,25 @@ private slots:
             if (chain.size() > 6)
                 break;
         }
-        const QString diag = QStringLiteral("point %1,%2 window %3x%4 chain %5")
-                                 .arg(a.x()).arg(a.y()).arg(app.window->width())
-                                 .arg(app.window->height()).arg(chain.join(QStringLiteral(" < ")));
+        QObject *view = tile->parentItem() ? tile->parentItem()->parentItem() : nullptr;
+        int activations = 0;
+        if (view)
+            connect(view, SIGNAL(fileActivated(QString,bool)), &activationCounter, SLOT(count()));
+        activationCounter.n = 0;
+        auto *cfg = app.engine.rootContext()->contextProperty("config").value<QObject *>();
+        const QString selAfterCtrl = view ? view->property("selectedIndices").toString()
+                                          + QString::number(view->property("selectedIndices").toList().size())
+                                          : QStringLiteral("?");
         QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
+        QTest::qWait(1000);
+        activations = activationCounter.n;
+        const QString diag = QStringLiteral("singleClick=%1 selAfterCtrl=%2 selAfterDbl=%3 activations=%4 dblInterval=%5 point %6,%7 chain %8")
+                                 .arg(cfg ? cfg->property("singleClickOpensFolders").toString() : QStringLiteral("?"))
+                                 .arg(selAfterCtrl)
+                                 .arg(view ? view->property("selectedIndices").toList().size() : -1)
+                                 .arg(activations)
+                                 .arg(QGuiApplication::styleHints()->mouseDoubleClickInterval())
+                                 .arg(a.x()).arg(a.y()).arg(chain.join(QStringLiteral(" < ")));
         QTRY_VERIFY2(tab->currentPath() == root + "/a",
                      qPrintable(visited.join(" -> ") + QStringLiteral(" | ") + diag));
         QTest::qWait(300);
