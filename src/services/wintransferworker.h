@@ -34,13 +34,13 @@ public:
     // CopyFileExW progress routine; public only so the C callback can reach it.
     unsigned long onCopyProgress(qint64 itemBytesDone);
 
+    // Deletes a tree, unlinking (never entering) symlinks and junctions.
+    static bool removeTree(const QString &path, QString *error);
+
 signals:
     void progressUpdated(double progress, const QString &speed, const QString &eta);
     void itemStarted(const QString &sourcePath, const QString &targetPath);
     void finished(bool success, const QString &error);
-
-    // Deletes a tree, unlinking (never entering) symlinks and junctions.
-    static bool removeTree(const QString &path, QString *error);
 
 private:
     bool transferOne(const TransferItem &item, bool moveOperation, QString *error);
