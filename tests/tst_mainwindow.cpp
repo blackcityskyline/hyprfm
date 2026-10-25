@@ -957,10 +957,16 @@ private slots:
         QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
         QCOMPARE(app.tabModel->activeTab()->currentPath(), root);
 
+        // Every path the tab visits, so a failure shows whether it went into
+        // "a" and straight back out or never moved.
+        QStringList visited;
+        auto *tab = app.tabModel->activeTab();
+        connect(tab, &TabModel::currentPathChanged, this,
+                [&] { visited << tab->currentPath(); });
         QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
-        QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), root + "/a");
+        QTRY_VERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
         QTest::qWait(300);
-        QCOMPARE(app.tabModel->activeTab()->currentPath(), root + "/a");
+        QVERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
     }
 
     // Activating a program asks how to run it instead of handing it to
