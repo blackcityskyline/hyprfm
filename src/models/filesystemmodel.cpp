@@ -1366,9 +1366,13 @@ void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags, 
     keys.reserve(entries.size());
     for (int i = 0; i < entries.size(); ++i) {
         const QString &name = entries.at(i).name;
-        keys.append({collator.sortKey(name),
-                     collator.sortKey(byType ? suffixOf(name) : QString()),
-                     i});
+        QCollatorSortKey nameKey = collator.sortKey(name);
+        // The type key is only compared when sorting by type; otherwise share
+        // the name key instead of computing a second one. The '.' prefix keeps
+        // extensionless names off the empty string, which Windows' collator
+        // rejects (LCMapStringW returns no key).
+        QCollatorSortKey typeKey = byType ? collator.sortKey(QLatin1Char('.') + suffixOf(name)) : nameKey;
+        keys.append({std::move(nameKey), std::move(typeKey), i});
     }
 
     std::stable_sort(keys.begin(), keys.end(), [&](const Keyed &a, const Keyed &b) {
