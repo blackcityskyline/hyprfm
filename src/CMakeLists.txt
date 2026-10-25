@@ -1,5 +1,4 @@
 set(HYPRFM_SOURCES
-    main.cpp
     services/configmanager.cpp
     services/themeloader.cpp
     services/clipboardmanager.cpp
@@ -36,13 +35,16 @@ else()
     list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp)
 endif()
 
-qt_add_executable(hyprfm ${HYPRFM_SOURCES})
+# Everything but main.cpp, compiled once and linked by both the app and the
+# tests (which used to recompile the same sources, some up to ten times).
+qt_add_library(hyprfm_core STATIC ${HYPRFM_SOURCES})
+qt_add_executable(hyprfm main.cpp)
 
 option(HYPRFM_ENABLE_PCH "Enable precompiled headers (faster builds)" ON)
 option(HYPRFM_ENABLE_UNITY_BUILD "Enable unity builds (faster clean builds)" ON)
 
 if(HYPRFM_ENABLE_PCH)
-    target_precompile_headers(hyprfm PRIVATE
+    target_precompile_headers(hyprfm_core PRIVATE
         <QtCore/QObject>
         <QtCore/QString>
         <QtCore/QStringList>
@@ -56,7 +58,7 @@ if(HYPRFM_ENABLE_PCH)
 endif()
 
 if(HYPRFM_ENABLE_UNITY_BUILD)
-    set_target_properties(hyprfm PROPERTIES
+    set_target_properties(hyprfm_core PROPERTIES
         UNITY_BUILD ON
         UNITY_BUILD_BATCH_SIZE 8
     )
@@ -239,7 +241,7 @@ qt_add_qml_module(quill ${quill_qml_module_args}
 target_link_libraries(quill PRIVATE Qt6::Quick)
 target_link_libraries(hyprfm PRIVATE quillplugin)
 
-target_link_libraries(hyprfm PRIVATE
+target_link_libraries(hyprfm_core PUBLIC
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
@@ -250,18 +252,20 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Concurrent
 )
 if(WIN32)
-    target_link_libraries(hyprfm PRIVATE shell32 ole32 shlwapi)
+    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi)
     # Console build until the port settles: stderr is the only log channel CI sees.
     # ponytail: flip to WIN32_EXECUTABLE ON for release packaging.
 else()
-    target_link_libraries(hyprfm PRIVATE Qt6::DBus PkgConfig::GIO)
+    target_link_libraries(hyprfm_core PUBLIC Qt6::DBus PkgConfig::GIO)
 endif()
+
+target_link_libraries(hyprfm PRIVATE hyprfm_core)
 
 if(KF6WindowSystem_FOUND)
     target_link_libraries(hyprfm PRIVATE KF6::WindowSystem)
 endif()
 
-target_include_directories(hyprfm PRIVATE
+target_include_directories(hyprfm_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
@@ -275,7 +279,7 @@ target_compile_definitions(hyprfm PRIVATE
 )
 
 if(KF6WindowSystem_FOUND)
-    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_KWINDOWSYSTEM=1)
+    target_compile_definitions(hyprfm_core PUBLIC HYPRFM_HAS_KWINDOWSYSTEM=1)
 endif()
 
 install(TARGETS hyprfm DESTINATION bin)
