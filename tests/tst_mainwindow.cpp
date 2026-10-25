@@ -68,8 +68,18 @@ public:
                 if (!qobject_cast<QQuickItem *>(obj) || e->type() == QEvent::UngrabMouse)
                     return false;
                 who = QString::fromLatin1(obj->metaObject()->className()).left(40);
-                if (!obj->objectName().isEmpty())
-                    who += QLatin1Char('#') + obj->objectName();
+                if (e->type() == QEvent::MouseButtonPress && who == QLatin1String("QQuickMouseArea")) {
+                    for (QObject *o = obj; o; o = o->parent()) {
+                        auto *it = qobject_cast<QQuickItem *>(o);
+                        QQmlContext *ctx = qmlContext(o);
+                        who += QStringLiteral(" < %1@%2").arg(QString::fromLatin1(o->metaObject()->className()).left(30),
+                                                            ctx ? ctx->baseUrl().fileName() : QString());
+                        if (it)
+                            who += QStringLiteral("[%1x%2 z%3]").arg(it->width()).arg(it->height()).arg(it->z());
+                        if (who.size() > 600)
+                            break;
+                    }
+                }
             }
             *out << tag + t + who;
             break;
