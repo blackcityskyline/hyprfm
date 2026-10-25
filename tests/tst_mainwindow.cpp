@@ -17,6 +17,7 @@
 #include <functional>
 #include <QTemporaryDir>
 #include <QWheelEvent>
+#include "testdir.h"
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
 #include "models/filesystemmodel.h"
@@ -71,7 +72,7 @@ class TestMainWindow : public QObject
                 if (!line.startsWith("prefer "))
                     dst.write(line + '\n');
             dst.close();
-            QFile::link(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
+            makeSymlink(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
 
             QQuickStyle::setStyle("Basic");
             const QString configDir = home.path() + "/.config/hyprfm";

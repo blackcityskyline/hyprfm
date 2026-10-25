@@ -1,3 +1,4 @@
+#include <QDir>
 #include <QTest>
 #include <QAbstractItemModelTester>
 #include "models/devicemodel.h"
@@ -47,7 +48,7 @@ private slots:
         int rootRow = -1;
         for (int i = 0; i < model.rowCount(); ++i) {
             QModelIndex idx = model.index(i);
-            if (model.data(idx, DeviceModel::MountPointRole).toString() == "/") {
+            if (model.data(idx, DeviceModel::MountPointRole).toString() == QDir::rootPath()) {
                 rootRow = i;
                 break;
             }

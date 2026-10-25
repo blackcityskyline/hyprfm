@@ -178,6 +178,9 @@ private slots:
 
     void testOpenInEditorRunsEditorInTerminal()
     {
+#ifdef Q_OS_WIN
+        QSKIP("shell-script fixtures; Windows terminal launch is not ported yet");
+#else
         QTemporaryDir dir;
         const QString marker = dir.filePath("argv");
         const QString term = dir.filePath("term.sh");
@@ -198,6 +201,7 @@ private slots:
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(QString::fromUtf8(f.readAll()).trimmed(), QString("-e myeditor --wait /tmp/config.toml"));
         qunsetenv("TERMINAL"); qunsetenv("EDITOR");
+#endif
     }
 
     // Ghostty (and other single-instance terminals) hand a bare launch to the
@@ -205,6 +209,9 @@ private slots:
     // terminals get an explicit working-directory flag.
     void testOpenInTerminalPassesDirFlagForKnownTerminal()
     {
+#ifdef Q_OS_WIN
+        QSKIP("shell-script fixtures; Windows terminal launch is not ported yet");
+#else
         QTemporaryDir dir;
         const QString marker = dir.filePath("argv");
         const QString term = dir.filePath("ghostty");
@@ -227,10 +234,14 @@ private slots:
                  QStringLiteral("--gtk-single-instance=false --working-directory=%1").arg(dir.path()));
         QCOMPARE(lines[1], dir.path());
         qunsetenv("TERMINAL");
+#endif
     }
 
     void testRunExecutableRunsInItsFolderOrTerminal()
     {
+#ifdef Q_OS_WIN
+        QSKIP("shell-script fixtures; Windows terminal launch is not ported yet");
+#else
         QTemporaryDir dir;
         const QString marker = dir.filePath("ran");
         const QString prog = dir.filePath("prog.sh");
@@ -278,10 +289,14 @@ private slots:
         QVERIFY(a.open(QIODevice::ReadOnly));
         QCOMPARE(QString::fromUtf8(a.readAll()).trimmed(), QStringLiteral("-e ") + prog);
         qunsetenv("TERMINAL");
+#endif
     }
 
     void testRunCustomActionSubstitutesPathAndRunsPerItem()
     {
+#ifdef Q_OS_WIN
+        QSKIP("shell-script fixtures; Windows terminal launch is not ported yet");
+#else
         QTemporaryDir dir;
         const QString script = dir.filePath("act.sh");
         {
@@ -296,6 +311,7 @@ private slots:
         ops.runCustomAction(script + " %f", {a, b});
         QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(a + ".done"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(b + ".done"), 5000);
+#endif
     }
 
     // --- Copy ---
@@ -1206,6 +1222,9 @@ private slots:
 
     void testTrashHelpersForHomePath()
     {
+#ifdef Q_OS_WIN
+        QSKIP("XDG trash layout; Windows uses the Recycle Bin");
+#else
         FileOperations ops;
 
         const QString expectedTrashPath = QDir::cleanPath(QDir::homePath() + "/.local/share/Trash/files");
@@ -1214,6 +1233,7 @@ private slots:
         QCOMPARE(ops.trashFilesPathFor(homeFilePath), expectedTrashPath);
         QVERIFY(!ops.isTrashPath(homeFilePath));
         QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
+#endif
     }
 
     void testTrashHelpersForMountedVolume()

@@ -90,7 +90,7 @@ struct ViewHarness {
                 dst.write(line + '\n');
         }
         dst.close();
-        QFile::link(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
+        makeSymlink(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
 
         QQmlEngine *engine = view.engine();
         engine->addImportPath(moduleDir.path());

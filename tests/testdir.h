@@ -10,6 +10,20 @@
 #include <windows.h>
 #endif
 
+// QFile::link makes a .lnk shortcut on Windows; tests mean a real symlink.
+inline bool makeSymlink(const QString &target, const QString &linkPath)
+{
+#ifdef Q_OS_WIN
+    DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+    if (QFileInfo(target).isDir())
+        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    return CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(linkPath).utf16()),
+                               reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(target).utf16()), flags);
+#else
+    return QFile::link(target, linkPath);
+#endif
+}
+
 // Dolphin-inspired test fixture: auto-cleanup temporary directory with
 // convenience methods for creating known file hierarchies.
 class TestDir : public QTemporaryDir
@@ -60,16 +74,7 @@ public:
         QString linkPath = path() + "/" + linkRelPath;
         QFileInfo info(linkPath);
         QDir().mkpath(info.absolutePath());
-#ifdef Q_OS_WIN
-        // QFile::link makes a .lnk shortcut on Windows; tests mean a symlink.
-        DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
-        if (QFileInfo(target).isDir())
-            flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
-        CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(linkPath).utf16()),
-                            reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(target).utf16()), flags);
-#else
-        QFile::link(target, linkPath);
-#endif
+        makeSymlink(target, linkPath);
         return linkPath;
     }
 

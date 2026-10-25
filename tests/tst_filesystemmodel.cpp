@@ -51,6 +51,9 @@ private slots:
     // pending placeholder and deliver the rest through remotePropertiesReady.
     void testRemotePropertiesDoNotBlock()
     {
+#ifdef Q_OS_WIN
+        QSKIP("gvfs remote listing is Linux-only");
+#else
         FileSystemModel model;
         QSignalSpy ready(&model, &FileSystemModel::remotePropertiesReady);
         const QString uri = QStringLiteral("sftp://127.0.0.1:1/nowhere/file.txt");
@@ -67,6 +70,7 @@ private slots:
         QVERIFY(!ready.at(0).at(1).toMap().value("pending").toBool());
         QTest::qWait(200);
         QCOMPARE(ready.count(), 1);
+#endif
     }
 
     // A gvfs share lists only once mounted, so a failed `gio list` mounts and
@@ -74,6 +78,9 @@ private slots:
     // shortcuts as folders, regular files (recent:///) still as files.
     void testRemoteListMountsAndFollowsTargets()
     {
+#ifdef Q_OS_WIN
+        QSKIP("gvfs remote listing is Linux-only");
+#else
         QTemporaryDir bin;
         const QString mounted = bin.filePath("mounted");
         QFile gio(bin.filePath("gio"));
@@ -102,6 +109,7 @@ private slots:
         const QModelIndex file = model.index(1);
         QCOMPARE(model.data(file, FileSystemModel::FilePathRole).toString(), QStringLiteral("/tmp/a.txt"));
         QVERIFY(!model.data(file, FileSystemModel::IsDirRole).toBool());
+#endif
     }
 
     void initTestCase()
@@ -596,7 +604,8 @@ private slots:
         // rather than asserting an exact string.
         QVERIFY(!fileType.isEmpty());
         QVERIFY2(fileType.contains("PNG", Qt::CaseInsensitive)
-                 || fileType.contains("image", Qt::CaseInsensitive),
+                 || fileType.contains("image", Qt::CaseInsensitive)
+                 || fileType.contains("Graphics", Qt::CaseInsensitive),   // Qt's bundled MIME db (Windows)
                  qPrintable(fileType));
     }
 
@@ -644,7 +653,10 @@ private slots:
         QCOMPARE(model.data(file, FileSystemModel::FileOwnerRole).toString(), QFileInfo(dir.path()).owner());
         QCOMPARE(model.data(file, FileSystemModel::FileGroupRole).toString(), QFileInfo(dir.path()).group());
         QCOMPARE(model.data(file, FileSystemModel::FileExtensionRole).toString(), QString("gz"));
-        QCOMPARE(model.data(file, FileSystemModel::MimeTypeRole).toString(), QString("application/x-compressed-tar"));
+        // Qt's bundled MIME database (Windows) ranks the plain gzip glob first.
+        const QString mime = model.data(file, FileSystemModel::MimeTypeRole).toString();
+        QVERIFY2(mime == QLatin1String("application/x-compressed-tar") || mime == QLatin1String("application/gzip"),
+                 qPrintable(mime));
         QVERIFY(!model.data(file, FileSystemModel::FileCreatedTextRole).toString().isEmpty());
         QVERIFY(!model.data(file, FileSystemModel::FileAccessedTextRole).toString().isEmpty());
         QCOMPARE(model.data(file, FileSystemModel::SymlinkTargetRole).toString(), QString());
@@ -867,6 +879,9 @@ private slots:
     // links are not files a file manager lists.
     void testListingMatchesQDirForSpecialEntries()
     {
+#ifdef Q_OS_WIN
+        QSKIP("fifos and POSIX symlinks");
+#else
         TestDir dir;
         dir.createFile("regular.txt");
         QVERIFY(QDir(dir.path()).mkdir("sub"));
@@ -895,6 +910,7 @@ private slots:
                 QVERIFY(model.data(model.index(i), FileSystemModel::IsSymlinkRole).toBool());
             }
         }
+#endif
     }
 
     // 11. Sorting

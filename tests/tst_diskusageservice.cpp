@@ -1,4 +1,5 @@
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QProcess>
 #include <QSet>
@@ -21,6 +22,19 @@ namespace {
 // directory's own st_size too, so du itself cannot be the reference.
 qint64 duApparentSize(const QStringList &paths)
 {
+#ifdef Q_OS_WIN
+    // No GNU find on Windows (find.exe is a text search); no hard links to
+    // dedupe either, so the plain file sizes are the reference.
+    qint64 sum = 0;
+    for (const QString &path : paths) {
+        QDirIterator it(path, QDir::Files | QDir::Hidden | QDir::System, QDirIterator::Subdirectories);
+        while (it.hasNext())
+            sum += it.nextFileInfo().size();
+        if (QFileInfo(path).isFile())
+            sum += QFileInfo(path).size();
+    }
+    return sum;
+#endif
     QProcess proc;
     proc.start(QStringLiteral("find"),
                paths + QStringList{QStringLiteral("!"), QStringLiteral("-type"), QStringLiteral("d"),

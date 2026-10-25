@@ -350,12 +350,15 @@ set_tests_properties(tst_cli_version PROPERTIES
     PASS_REGULAR_EXPRESSION "^hyprfm [0-9]+\\.[0-9]+\\.[0-9]+"
 )
 
+# XDG trash spec on disk; Windows has the Recycle Bin instead.
+if(NOT WIN32)
 add_executable(tst_xdgtrash tst_xdgtrash.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
 )
 target_include_directories(tst_xdgtrash PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_xdgtrash PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME tst_xdgtrash COMMAND tst_xdgtrash)
+endif()
 
 add_executable(tst_recentfilesmodel tst_recentfilesmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/recentfilesmodel.cpp

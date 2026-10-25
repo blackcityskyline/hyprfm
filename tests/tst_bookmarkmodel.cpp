@@ -1,3 +1,4 @@
+#include <QDir>
 #include <QTest>
 #include <QSignalSpy>
 #include <QAbstractItemModelTester>
@@ -42,7 +43,7 @@ private slots:
         model.setBookmarks({"~/Documents"});
         QModelIndex idx = model.index(0);
         QString path = model.data(idx, BookmarkModel::PathRole).toString();
-        QVERIFY(path.startsWith("/"));
+        QVERIFY(QDir::isAbsolutePath(path));
         QVERIFY(path.endsWith("/Documents"));
         QVERIFY(!path.contains("~"));
     }
