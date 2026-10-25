@@ -630,9 +630,11 @@ int main(int argc, char *argv[])
             printf("hyprfm %s\n", HYPRFM_VERSION);
             return 0;
         }
+#ifdef Q_OS_LINUX
         // Internal: run by soleHardwareVulkanDriver() with one driver visible.
         if (a == "--vulkan-probe")
             return hasHardwareVulkanDevice() ? 0 : 1;
+#endif
     }
 
     // Suppress noisy warnings:

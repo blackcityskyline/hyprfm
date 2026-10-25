@@ -1,7 +1,7 @@
 if(WIN32)
     set(HYPRFM_PLATFORM_SRC ${CMAKE_SOURCE_DIR}/src/services/wintransferworker.cpp
                             ${CMAKE_SOURCE_DIR}/src/services/winshell.cpp)
-    set(HYPRFM_PLATFORM_LIBS shell32 ole32 shlwapi)
+    set(HYPRFM_PLATFORM_LIBS Qt6::Gui shell32 ole32 shlwapi)
     set(HYPRFM_DEVICE_SRC ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
                           ${CMAKE_SOURCE_DIR}/src/models/devicemodel_win.cpp
                           ${CMAKE_SOURCE_DIR}/src/services/winshell.cpp)

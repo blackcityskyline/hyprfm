@@ -6,6 +6,7 @@
 #include <QWindow>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 #include <winioctl.h>
 
