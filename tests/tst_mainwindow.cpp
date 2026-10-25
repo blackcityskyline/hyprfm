@@ -974,16 +974,12 @@ private slots:
             if (chain.size() > 6)
                 break;
         }
-        QQuickItem *hit = app.window->contentItem();
-        for (QQuickItem *c = hit; c;) {
-            hit = c;
-            c = c->childAt(c->mapFromScene(a).x(), c->mapFromScene(a).y());
-        }
-        qWarning().noquote() << "single-click diag: point" << a << "window" << app.window->size()
-                             << "hit" << hit->metaObject()->className() << hit->mapToScene({0, 0})
-                             << "chain" << chain.join(QStringLiteral(" < "));
+        const QString diag = QStringLiteral("point %1,%2 window %3x%4 chain %5")
+                                 .arg(a.x()).arg(a.y()).arg(app.window->width())
+                                 .arg(app.window->height()).arg(chain.join(QStringLiteral(" < ")));
         QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
-        QTRY_VERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
+        QTRY_VERIFY2(tab->currentPath() == root + "/a",
+                     qPrintable(visited.join(" -> ") + QStringLiteral(" | ") + diag));
         QTest::qWait(300);
         QVERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
     }
