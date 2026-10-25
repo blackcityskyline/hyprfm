@@ -1,0 +1,80 @@
+name: Windows
+
+on:
+  push:
+    branches:
+      - windows-port
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtshadertools'
+          cache: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage"
+
+      # -k 0 keeps going past the first failure so one run reports every
+      # compile error.
+      - name: Build
+        run: cmake --build build -- -k 0
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 180 -j 2
+
+      - name: Package
+        if: always() && hashFiles('build/src/hyprfm.exe') != ''
+        shell: pwsh
+        run: |
+          cmake --install build
+          windeployqt --release --qmldir src/qml --no-translations --no-system-d3d-compiler `
+            --no-opengl-sw --no-compiler-runtime stage/bin/hyprfm.exe
+          Get-ChildItem stage -Recurse -File | Measure-Object -Sum Length |
+            ForEach-Object { "Package: {0} files, {1:N1} MB" -f $_.Count, ($_.Sum / 1MB) }
+
+      - name: Smoke test
+        if: always() && hashFiles('stage/bin/hyprfm.exe') != ''
+        shell: pwsh
+        run: |
+          & stage/bin/hyprfm.exe --version
+          $env:HYPRFM_TIMING = '1'
+          $env:QT_FORCE_STDERR_LOGGING = '1'
+          $p = Start-Process stage/bin/hyprfm.exe -ArgumentList 'C:/Windows' -PassThru `
+                 -RedirectStandardError smoke.err -RedirectStandardOutput smoke.out
+          Start-Sleep -Seconds 15
+          $alive = -not $p.HasExited
+          if ($alive) {
+            $mb = [math]::Round($p.WorkingSet64 / 1MB, 1)
+            "Running after 15 s, working set $mb MB"
+            Stop-Process -Id $p.Id
+          } else {
+            "Exited early with code $($p.ExitCode)"
+          }
+          Get-Content smoke.err, smoke.out
+          if (-not $alive) { exit 1 }
+
+      - name: Upload
+        if: always() && hashFiles('stage/bin/hyprfm.exe') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyprfm-windows-x64
+          path: stage
