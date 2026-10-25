@@ -1010,6 +1010,44 @@ private slots:
         QVERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
     }
 
+    // ponytail: temporary probe for the Windows single-click failure.
+    void probeSingleClick()
+    {
+        QStringList out;
+        for (int mode = 0; mode < 3; ++mode) {
+            App app;
+            const QString configDir = app.home.path() + "/.config/hyprfm";
+            QDir().mkpath(configDir);
+            {
+                QFile f(configDir + "/config.toml");
+                QVERIFY(f.open(QIODevice::WriteOnly));
+                f.write("[general]\nsingle_click_opens_folders = true\n");
+            }
+            QVERIFY(app.load());
+            const QString root = app.home.path() + "/root";
+            QVERIFY(QDir().mkpath(root + "/a/b"));
+            QObject *main = app.window->contentItem()->parent();
+            QVERIFY(QMetaObject::invokeMethod(main, "navigateActivePaneTo", Q_ARG(QVariant, root)));
+            QTRY_VERIFY(App::findText(app.window->contentItem(), QStringLiteral("a")));
+            QQuickItem *tile = App::findText(app.window->contentItem(), QStringLiteral("a"))->parentItem();
+            QTRY_VERIFY(tile->isVisible() && tile->width() > 0);
+            const QPoint a = app.center(tile);
+            Counter c;
+            connect(tile->parentItem()->parentItem(), SIGNAL(fileActivated(QString,bool)), &c, SLOT(count()));
+            if (mode == 2) {
+                QTest::mouseClick(app.window, Qt::LeftButton, Qt::ControlModifier, a);
+                QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+            }
+            if (mode == 1)
+                QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
+            else
+                QTest::mouseClick(app.window, Qt::LeftButton, {}, a);
+            QTest::qWait(500);
+            out << QStringLiteral("%1:%2").arg(QStringList{"click", "dclick", "ctrl+click"}[mode]).arg(c.n);
+        }
+        QSKIP(qPrintable(QStringLiteral("probe ") + out.join(QLatin1Char(' '))));
+    }
+
     // Activating a program asks how to run it instead of handing it to
     // xdg-open, which only knows to open scripts in an editor (#48).
     void testActivatingExecutableAsksToRun()
