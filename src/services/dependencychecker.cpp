@@ -165,6 +165,12 @@ void DependencyChecker::detectDistro()
 void DependencyChecker::populate()
 {
     m_deps.clear();
+#ifdef Q_OS_WIN
+    // Every entry below is a Linux package with distro install hints. Windows
+    // has its own copy/trash/device backends, so there is nothing to report,
+    // and the startup nag would cover the window on every launch.
+    return;
+#endif
 
     // ── Required runtime tools ────────────────────────────────────────────
     m_deps.append({
