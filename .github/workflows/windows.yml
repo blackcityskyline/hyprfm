@@ -97,7 +97,17 @@ jobs:
         run: |
           cmake --install build
           windeployqt --release --qmldir src/qml --no-translations --no-system-d3d-compiler `
-            --no-opengl-sw --no-compiler-runtime stage/bin/hyprfm.exe
+            --no-system-dxc-compiler --no-opengl-sw --no-compiler-runtime `
+            --skip-plugin-types qmltooling stage/bin/hyprfm.exe
+          # main.cpp forces the Basic style; windeployqt still ships every other
+          # Controls style, its DLLs and the native-style backend they share.
+          $bin = 'stage/bin'
+          foreach ($style in 'FluentWinUI3', 'Fusion', 'Imagine', 'Material', 'Universal', 'Windows') {
+            Remove-Item -Recurse -Force "$bin/qml/QtQuick/Controls/$style" -ErrorAction SilentlyContinue
+            Remove-Item -Force "$bin/Qt6QuickControls2$style.dll", "$bin/Qt6QuickControls2${style}StyleImpl.dll" `
+              -ErrorAction SilentlyContinue
+          }
+          Remove-Item -Recurse -Force "$bin/qml/QtQuick/NativeStyle" -ErrorAction SilentlyContinue
           Get-ChildItem stage -Recurse -File | Measure-Object -Sum Length |
             ForEach-Object { "Package: {0} files, {1:N1} MB" -f $_.Count, ($_.Sum / 1MB) }
 
@@ -121,6 +131,8 @@ jobs:
           }
           Get-Content smoke.err, smoke.out
           if (-not $alive) { exit 1 }
+          # A pruned module shows up as a QML load error, not a crash.
+          if (Select-String -Path smoke.err -Pattern 'is not installed|module .* not found|qrc:.*Error' -Quiet) { exit 1 }
 
       - name: Upload
         if: always() && hashFiles('stage/bin/hyprfm.exe') != ''
