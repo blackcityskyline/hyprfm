@@ -1029,6 +1029,33 @@ private slots:
 #endif
     }
 
+    // cmd.exe runs batch files and treats an unquoted '&' as "and then run":
+    // "t&evil.bat" must run itself, never evil.bat.
+    void testRunningBatchFileWithAmpersandIsNotInjected()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("cmd.exe batch quoting");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto write = [&](const QString &name, const QByteArray &body) {
+            QFile f(dir.filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(body);
+        };
+        write(QStringLiteral("t&evil.bat"), "@echo ok> good.txt\r\n");
+        write(QStringLiteral("evil.bat"), "@echo pwned> bad.txt\r\n");
+
+        FileOperations ops;
+        QSignalSpy failures(&ops, &FileOperations::operationFinished);
+        ops.runExecutable(dir.filePath(QStringLiteral("t&evil.bat")), false);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(dir.filePath(QStringLiteral("good.txt"))), 15000);
+        QTest::qWait(1000);
+        QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("bad.txt"))));
+        QCOMPARE(failures.count(), 0);
+#endif
+    }
+
     // Deleting a folder must unlink a junction inside it, not empty its
     // target: Qt does not count junctions as symlinks.
     void testDeleteDoesNotFollowJunctions()

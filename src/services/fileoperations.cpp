@@ -5,6 +5,7 @@
 #include "services/cloudmounts.h"
 #ifdef Q_OS_WIN
 #include "services/winshell.h"
+#include <windows.h>
 #include "services/wintransferworker.h"
 #else
 #include "services/giotransferworker.h"
@@ -741,6 +742,41 @@ QString currentUidString()
     return QString::number(geteuid());
 #endif
 }
+
+#ifdef Q_OS_WIN
+// Starts a program with a command line we quote ourselves. Qt only quotes
+// parts that contain spaces, and a .bat/.cmd target is run by cmd.exe, which
+// treats & | < > ^ ( ) in an unquoted part as syntax. Every part is quoted
+// here (Windows file names cannot contain '"', so a part that does is
+// refused), and trailing backslashes are doubled so they cannot escape the
+// closing quote.
+bool startWindowsProcess(const QString &program, const QStringList &args,
+                         const QString &workingDir, bool newConsole)
+{
+    QString line;
+    for (const QString &part : QStringList{program} + args) {
+        if (part.contains(QLatin1Char('"')))
+            return false;
+        QString quoted = part;
+        int trailing = 0;
+        while (trailing < quoted.size() && quoted.at(quoted.size() - 1 - trailing) == QLatin1Char('\\'))
+            ++trailing;
+        quoted.append(QString(trailing, QLatin1Char('\\')));
+        if (!line.isEmpty())
+            line += QLatin1Char(' ');
+        line += QLatin1Char('"') + quoted + QLatin1Char('"');
+    }
+    QProcess process;
+    process.setProgram(program);
+    process.setWorkingDirectory(workingDir);
+    process.setCreateProcessArgumentsModifier([line, newConsole](QProcess::CreateProcessArguments *a) {
+        a->arguments = line;
+        if (newConsole)
+            a->flags |= CREATE_NEW_CONSOLE;
+    });
+    return process.startDetached();
+}
+#endif
 
 QString trashUriRootPath()
 {
@@ -2175,7 +2211,13 @@ void FileOperations::runExecutable(const QString &path, bool inTerminal)
         startTerminal(dir, {QStringLiteral("-e"), path});
         return;
     }
-    if (!QProcess::startDetached(path, {}, dir))
+#ifdef Q_OS_WIN
+    // Batch files run through cmd, which would act on a '&' in an unquoted name.
+    const bool started = startWindowsProcess(path, {}, dir, false);
+#else
+    const bool started = QProcess::startDetached(path, {}, dir);
+#endif
+    if (!started)
         emit operationFinished(false,
             QStringLiteral("Could not run %1").arg(locationFileName(path)));
 }
@@ -2184,8 +2226,10 @@ void FileOperations::runExecutable(const QString &path, bool inTerminal)
 void FileOperations::startTerminal(const QString &dirPath, const QStringList &command)
 {
 #ifdef Q_OS_WIN
-    // $TERMINAL wins if set; otherwise Windows Terminal, else a new console.
-    // Callers pass Linux-style "-e prog args"; wt and cmd take the command bare.
+    // $TERMINAL wins if set; otherwise a command runs in a console of its
+    // own and a bare terminal is Windows Terminal (or cmd). Never through
+    // `cmd /k`: it re-parses its arguments, so a file named "x&y.exe" would
+    // run y. Callers pass Linux-style "-e prog args".
     QStringList run = command;
     if (run.value(0) == QLatin1String("-e"))
         run.removeFirst();
@@ -2194,19 +2238,17 @@ void FileOperations::startTerminal(const QString &dirPath, const QStringList &co
     if (!custom.isEmpty()) {
         QStringList args = QProcess::splitCommand(custom);
         const QString program = args.takeFirst();
-        started = QProcess::startDetached(program, args + run, dirPath);
+        started = startWindowsProcess(program, args + run, dirPath, false);
+    } else if (!run.isEmpty()) {
+        const QString program = run.takeFirst();
+        started = startWindowsProcess(program, run, dirPath, true);
     } else if (!QStandardPaths::findExecutable(QStringLiteral("wt")).isEmpty()) {
-        QStringList args{QStringLiteral("-d"), QDir::toNativeSeparators(dirPath)};
-        if (!run.isEmpty())
-            args << QStringLiteral("cmd") << QStringLiteral("/k") << run;
-        started = QProcess::startDetached(QStringLiteral("wt"), args, dirPath);
+        // wt splits its command line on ';', even inside quotes.
+        QString dir = QDir::toNativeSeparators(dirPath);
+        dir.replace(QLatin1Char(';'), QStringLiteral("\\;"));
+        started = startWindowsProcess(QStringLiteral("wt"), {QStringLiteral("-d"), dir}, dirPath, false);
     } else {
-        // `start` gives the shell its own console window.
-        QStringList args{QStringLiteral("/c"), QStringLiteral("start"), QString(),
-                         QStringLiteral("cmd")};
-        if (!run.isEmpty())
-            args << QStringLiteral("/k") << run;
-        started = QProcess::startDetached(QStringLiteral("cmd"), args, dirPath);
+        started = startWindowsProcess(QStringLiteral("cmd.exe"), {}, dirPath, true);
     }
     if (!started)
         emit operationFinished(false, QStringLiteral("Could not open a terminal"));
