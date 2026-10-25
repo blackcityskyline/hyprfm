@@ -51,7 +51,7 @@ class EventLog : public QObject
 public:
     QString tag;
     QStringList *out = nullptr;
-    bool eventFilter(QObject *, QEvent *e) override
+    bool eventFilter(QObject *obj, QEvent *e) override
     {
         switch (e->type()) {
         case QEvent::MouseButtonPress:
@@ -63,7 +63,15 @@ public:
                 auto *me = static_cast<QMouseEvent *>(e);
                 t += QStringLiteral("m%1").arg(int(me->modifiers()), 0, 16);
             }
-            *out << tag + t;
+            QString who;
+            if (tag == QLatin1String("A")) {
+                if (!qobject_cast<QQuickItem *>(obj) || e->type() == QEvent::UngrabMouse)
+                    return false;
+                who = QString::fromLatin1(obj->metaObject()->className()).left(40);
+                if (!obj->objectName().isEmpty())
+                    who += QLatin1Char('#') + obj->objectName();
+            }
+            *out << tag + t + who;
             break;
         }
         default:
@@ -1078,11 +1086,16 @@ private slots:
                 QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
                 events << QStringLiteral("|");
             }
+            EventLog appLog;
+            appLog.tag = QStringLiteral("A");
+            appLog.out = &events;
+            qApp->installEventFilter(&appLog);
             if (mode == 1)
                 QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
             else
                 QTest::mouseClick(app.window, Qt::LeftButton, {}, a);
             QTest::qWait(500);
+            qApp->removeEventFilter(&appLog);
             out << QStringLiteral("%1:%2[%3%4]").arg(QStringList{"click", "dclick", "ctrl+click"}[mode]).arg(c.n)
                        .arg(ma ? QString() : QStringLiteral("noMA ")).arg(events.join(QLatin1Char(',')));
         }
