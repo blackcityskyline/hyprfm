@@ -963,6 +963,25 @@ private slots:
         auto *tab = app.tabModel->activeTab();
         connect(tab, &TabModel::currentPathChanged, this,
                 [&] { visited << tab->currentPath(); });
+        // ponytail: temporary Windows diagnostics, remove once this passes there.
+        QStringList chain;
+        for (QQuickItem *it = tile; it; it = it->parentItem()) {
+            const QVariant fp = it->property("filePath");
+            chain << QStringLiteral("%1[%2,%3 %4x%5%6]")
+                         .arg(QString::fromLatin1(it->metaObject()->className()))
+                         .arg(it->x()).arg(it->y()).arg(it->width()).arg(it->height())
+                         .arg(fp.isValid() ? QStringLiteral(" ") + fp.toString() : QString());
+            if (chain.size() > 6)
+                break;
+        }
+        QQuickItem *hit = app.window->contentItem();
+        for (QQuickItem *c = hit; c;) {
+            hit = c;
+            c = c->childAt(c->mapFromScene(a).x(), c->mapFromScene(a).y());
+        }
+        qWarning().noquote() << "single-click diag: point" << a << "window" << app.window->size()
+                             << "hit" << hit->metaObject()->className() << hit->mapToScene({0, 0})
+                             << "chain" << chain.join(QStringLiteral(" < "));
         QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
         QTRY_VERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
         QTest::qWait(300);
