@@ -769,8 +769,11 @@ bool startWindowsProcess(const QString &program, const QStringList &args,
     QProcess process;
     process.setProgram(program);
     process.setWorkingDirectory(workingDir);
-    process.setCreateProcessArgumentsModifier([line, newConsole](QProcess::CreateProcessArguments *a) {
-        a->arguments = line;
+    // CreateProcessW may write into the buffer, and it must outlive the call:
+    // the lambda owns it until startDetached() returns.
+    process.setCreateProcessArgumentsModifier(
+        [buffer = line.toStdWString(), newConsole](QProcess::CreateProcessArguments *a) mutable {
+        a->arguments = buffer.data();
         if (newConsole)
             a->flags |= CREATE_NEW_CONSOLE;
     });
