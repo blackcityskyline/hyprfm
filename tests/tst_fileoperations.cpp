@@ -1006,6 +1006,51 @@ private slots:
         QDir(testPath).removeRecursively();
     }
 
+    // Recycle Bin read off disk ($R/$I files), the Windows side of XdgTrash.
+    void testRecycleBinRoundTrip()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("Windows Recycle Bin");
+#else
+        QTemporaryDir dir;   // under %TEMP%, a fixed drive with a bin
+        QVERIFY(dir.isValid());
+        const QString filePath = dir.filePath(QStringLiteral("recycle me #1.txt"));
+        {
+            QFile f(filePath);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("recycle me");
+        }
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+        const QDateTime before = QDateTime::currentDateTime().addSecs(-5);
+        ops.trashFiles({filePath});
+        QVERIFY(spy.wait(15000));
+        QVERIFY2(spy.at(0).at(0).toBool(), qPrintable(spy.at(0).at(1).toString()));
+        QVERIFY(!QFile::exists(filePath));
+
+        XdgTrash::Entry found;
+        for (const XdgTrash::Entry &entry : XdgTrash::scan()) {
+            if (entry.originalPath.compare(filePath, Qt::CaseInsensitive) == 0)
+                found = entry;
+        }
+        QVERIFY2(!found.filesPath.isEmpty(), "trashed file not found in any $Recycle.Bin");
+        QCOMPARE(found.name, QStringLiteral("recycle me #1.txt"));
+        QVERIFY(found.deletedAt >= before);
+        QVERIFY(ops.isTrashPath(found.filesPath));
+        const QString infoPath = XdgTrash::infoPathFor(found.filesPath);
+        QVERIFY(QFile::exists(infoPath));
+
+        spy.clear();
+        ops.restoreFromTrash({found.filesPath});
+        QVERIFY(spy.wait(15000));
+        QVERIFY2(spy.at(0).at(0).toBool(), qPrintable(spy.at(0).at(1).toString()));
+        QVERIFY(QFile::exists(filePath));
+        QVERIFY(!QFile::exists(found.filesPath));
+        QVERIFY(!QFile::exists(infoPath));
+#endif
+    }
+
     void testRestoreFromTrash()
     {
         if (QStandardPaths::findExecutable("gio").isEmpty())

@@ -748,7 +748,7 @@ QString trashUriRootPath()
 
 QString homeTrashFilesPath()
 {
-    return XdgTrash::homeRoot() + "/files";
+    return XdgTrash::filesDir(XdgTrash::homeRoot());
 }
 
 QString existingLookupPathFor(const QString &path)
@@ -772,6 +772,17 @@ QString existingLookupPathFor(const QString &path)
 
 QStringList trashRootCandidatesForPath(const QString &path)
 {
+#ifdef Q_OS_WIN
+    // One Recycle Bin per drive; the path's own drive comes first.
+    QStringList roots = XdgTrash::roots();
+    const QString drive = QDir::cleanPath(path).left(3).toUpper();
+    std::stable_partition(roots.begin(), roots.end(), [&](const QString &root) {
+        return root.left(3).toUpper() == drive;
+    });
+    if (roots.isEmpty())
+        roots.append(XdgTrash::homeRoot());
+    return roots;
+#else
     QStringList roots;
 
     const QString cleanPath = QDir::cleanPath(path);
@@ -788,6 +799,7 @@ QStringList trashRootCandidatesForPath(const QString &path)
     roots.append(XdgTrash::homeRoot());
     roots.removeDuplicates();
     return roots;
+#endif
 }
 
 QString matchingTrashFilesRoot(const QString &path)
@@ -800,7 +812,7 @@ QString matchingTrashFilesRoot(const QString &path)
         return {};
 
     for (const QString &trashRoot : trashRootCandidatesForPath(cleanPath)) {
-        const QString filesRoot = QDir(trashRoot).filePath("files");
+        const QString filesRoot = XdgTrash::filesDir(trashRoot);
         if (cleanPath == filesRoot || cleanPath.startsWith(filesRoot + "/"))
             return filesRoot;
     }
@@ -827,7 +839,7 @@ QString localTrashPathFor(const QString &path)
 
     const QStringList roots = XdgTrash::roots();
     for (const QString &root : roots) {
-        const QString filesRoot = QDir(root).filePath(QStringLiteral("files"));
+        const QString filesRoot = XdgTrash::filesDir(root);
         const QString candidate = QDir::cleanPath(filesRoot + QLatin1Char('/') + relative);
         // cleanPath resolves ".." segments, so re-check containment before
         // handing the path to anything that deletes recursively.
@@ -1388,7 +1400,7 @@ QString FileOperations::trashFilesPathFor(const QString &path) const
 
     const QStringList roots = trashRootCandidatesForPath(normalized);
     if (!roots.isEmpty())
-        return QDir(roots.first()).filePath("files");
+        return XdgTrash::filesDir(roots.first());
 
     return homeTrashFilesPath();
 }

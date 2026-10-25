@@ -3,7 +3,6 @@ set(HYPRFM_SOURCES
     services/themeloader.cpp
     services/clipboardmanager.cpp
     services/fileoperations.cpp
-    services/xdgtrash.cpp
     services/draghelper.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
@@ -30,9 +29,9 @@ set(HYPRFM_SOURCES
 
 if(WIN32)
     list(APPEND HYPRFM_SOURCES services/wintransferworker.cpp services/winshell.cpp
-                               models/devicemodel_win.cpp)
+                               models/devicemodel_win.cpp services/xdgtrash_win.cpp)
 else()
-    list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp)
+    list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp services/xdgtrash.cpp)
 endif()
 
 # Everything but main.cpp, compiled once and linked by both the app and the
@@ -252,7 +251,7 @@ target_link_libraries(hyprfm_core PUBLIC
     Qt6::Concurrent
 )
 if(WIN32)
-    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi)
+    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32)
     # Console build until the port settles: stderr is the only log channel CI sees.
     # ponytail: flip to WIN32_EXECUTABLE ON for release packaging.
 else()

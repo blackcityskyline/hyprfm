@@ -13,6 +13,10 @@
 // plain GLib and needs no gvfs at all.
 //
 // Remote trash (sftp://, smb://) is out of scope: those really do need gvfs.
+//
+// On Windows the same interface reads the Recycle Bin (xdgtrash_win.cpp):
+// each root is X:/$Recycle.Bin/<user SID>, items are its $R* entries and
+// their metadata the matching $I* files.
 namespace XdgTrash {
 
 struct Entry {
@@ -25,6 +29,10 @@ struct Entry {
 // ~/.local/share/Trash, whether or not it exists yet — callers that need to
 // say where a file *would* land use this; roots() only reports real ones.
 QString homeRoot();
+
+// The directory inside a trash root that holds the trashed items themselves:
+// <root>/files per the XDG spec, the root itself in the Recycle Bin.
+QString filesDir(const QString &root);
 
 // Every trash directory currently visible: the home one plus a
 // .Trash-<uid> / .Trash/<uid> on each mounted volume that has one.
