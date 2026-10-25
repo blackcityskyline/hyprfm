@@ -18,6 +18,12 @@ QStringList moveToRecycleBin(const QStringList &paths);
 // in Explorer does. Returns an error message, empty on success.
 QString ejectVolume(const QString &root);
 
+// Explorer's "Open with" dialog for one file; it launches the choice itself.
+void openWithDialog(const QString &path);
+
+// Sets the desktop wallpaper (all monitors). Returns an error, empty on success.
+QString setWallpaper(const QString &path);
+
 // Native folder picker; empty when cancelled.
 QString pickFolder(const QString &title, const QString &startFolder, const QString &okLabel);
 

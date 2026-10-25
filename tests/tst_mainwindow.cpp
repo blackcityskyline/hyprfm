@@ -967,12 +967,13 @@ private slots:
     // xdg-open, which only knows to open scripts in an editor (#48).
     void testActivatingExecutableAsksToRun()
     {
-#ifdef Q_OS_WIN
-        QSKIP("no exec bit on Windows; running programs is not ported yet");
-#endif
         App app;
         QVERIFY(app.load());
+#ifdef Q_OS_WIN
+        const QString script = app.home.path() + "/tool.bat";   // suffix, not exec bit
+#else
         const QString script = app.home.path() + "/tool.sh";
+#endif
         {
             QFile f(script);
             QVERIFY(f.open(QIODevice::WriteOnly));

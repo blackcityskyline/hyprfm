@@ -72,6 +72,9 @@ public:
     Q_INVOKABLE QString joinPath(const QString &dirPath, const QString &name) const;
     // file:// URL for a local path; "file://" + "C:/x" would make C: the host.
     Q_INVOKABLE QUrl localFileUrl(const QString &path) const;
+    // Shows the platform's own "Open with" dialog where there is one
+    // (Windows); false means the caller should use the in-app chooser.
+    Q_INVOKABLE bool nativeOpenWith(const QString &path);
     Q_INVOKABLE QString displayNameForPath(const QString &path) const;
     Q_INVOKABLE QVariantList breadcrumbSegments(const QString &path) const;
     Q_INVOKABLE int emptyTrash();

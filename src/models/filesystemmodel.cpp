@@ -2271,6 +2271,11 @@ QVariantList FileSystemModel::availableApps(const QString &mimeType) const
     QVariantList apps;
     if (mimeType.isEmpty())
         return apps;
+#ifdef Q_OS_WIN
+    // Apps come from .desktop files; Windows uses its own Open-with dialog
+    // (FileOperations::nativeOpenWith), reached through "Open With...".
+    return apps;
+#endif
 
     // Inside a Flatpak this transparently runs `flatpak-spawn --host gio
     // mime <type>` so we see the host's MIME associations and host apps.
@@ -2352,6 +2357,9 @@ void FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desk
 QVariantList FileSystemModel::allInstalledApps() const
 {
     QVariantList apps;
+#ifdef Q_OS_WIN
+    return apps;
+#endif
     QSet<QString> seen;
 
     const auto dataDirs = applicationDataDirs();

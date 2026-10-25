@@ -1835,6 +1835,17 @@ QUrl FileOperations::localFileUrl(const QString &path) const
     return QUrl::fromLocalFile(path);
 }
 
+bool FileOperations::nativeOpenWith(const QString &path)
+{
+#ifdef Q_OS_WIN
+    WinShell::openWithDialog(normalizeLocation(path));
+    return true;
+#else
+    Q_UNUSED(path)
+    return false;
+#endif
+}
+
 QString FileOperations::displayNameForPath(const QString &path) const
 {
     return locationFileName(path);
@@ -2014,6 +2025,11 @@ void FileOperations::openInEditor(const QString &path)
         return;
     }
 
+#ifdef Q_OS_WIN
+    startTerminal(QFileInfo(path).absolutePath(),
+                  QStringList{QStringLiteral("-e")} + QProcess::splitCommand(editor) + QStringList{path});
+    return;
+#endif
     const QString terminal = qEnvironmentVariable("TERMINAL", QStringLiteral("kitty"));
     QStringList args{QStringLiteral("-e")};
     args += QProcess::splitCommand(editor);
@@ -2126,6 +2142,12 @@ bool FileOperations::isExecutable(const QString &path) const
     if (isUriPath(path))
         return false;
     const QFileInfo info(path);
+#ifdef Q_OS_WIN
+    // No exec bit on Windows: programs are what CreateProcess runs directly.
+    static const QStringList programs{QStringLiteral("exe"), QStringLiteral("com"),
+                                      QStringLiteral("bat"), QStringLiteral("cmd")};
+    return info.isFile() && programs.contains(info.suffix().toLower());
+#endif
     if (!info.isFile() || !info.isExecutable())
         return false;
     // The x bit alone is not enough: on FAT/NTFS mounts every file has it,
@@ -2161,6 +2183,35 @@ void FileOperations::runExecutable(const QString &path, bool inTerminal)
 // Opens $TERMINAL in dirPath, running command (e.g. {"-e", prog}) if given.
 void FileOperations::startTerminal(const QString &dirPath, const QStringList &command)
 {
+#ifdef Q_OS_WIN
+    // $TERMINAL wins if set; otherwise Windows Terminal, else a new console.
+    // Callers pass Linux-style "-e prog args"; wt and cmd take the command bare.
+    QStringList run = command;
+    if (run.value(0) == QLatin1String("-e"))
+        run.removeFirst();
+    const QString custom = qEnvironmentVariable("TERMINAL");
+    bool started = false;
+    if (!custom.isEmpty()) {
+        QStringList args = QProcess::splitCommand(custom);
+        const QString program = args.takeFirst();
+        started = QProcess::startDetached(program, args + run, dirPath);
+    } else if (!QStandardPaths::findExecutable(QStringLiteral("wt")).isEmpty()) {
+        QStringList args{QStringLiteral("-d"), QDir::toNativeSeparators(dirPath)};
+        if (!run.isEmpty())
+            args << QStringLiteral("cmd") << QStringLiteral("/k") << run;
+        started = QProcess::startDetached(QStringLiteral("wt"), args, dirPath);
+    } else {
+        // `start` gives the shell its own console window.
+        QStringList args{QStringLiteral("/c"), QStringLiteral("start"), QString(),
+                         QStringLiteral("cmd")};
+        if (!run.isEmpty())
+            args << QStringLiteral("/k") << run;
+        started = QProcess::startDetached(QStringLiteral("cmd"), args, dirPath);
+    }
+    if (!started)
+        emit operationFinished(false, QStringLiteral("Could not open a terminal"));
+    return;
+#endif
     // $TERMINAL may carry flags ("kitty -1"); split like a shell would.
     QStringList args = QProcess::splitCommand(qEnvironmentVariable("TERMINAL", "kitty"));
     if (args.isEmpty())
@@ -3087,6 +3138,12 @@ QByteArray FileOperations::clipboardImageData() const
 void FileOperations::setWallpaper(const QString &path)
 {
     const QString resolved = QFileInfo(path).absoluteFilePath();
+#ifdef Q_OS_WIN
+    const QString error = WinShell::setWallpaper(resolved);
+    if (!error.isEmpty())
+        emit operationFinished(false, QStringLiteral("Could not set the wallpaper: %1").arg(error));
+    return;
+#endif
     auto *proc = new QProcess(this);
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this, [this, proc](int exitCode, QProcess::ExitStatus) {

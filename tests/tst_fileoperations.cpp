@@ -1006,6 +1006,29 @@ private slots:
         QDir(testPath).removeRecursively();
     }
 
+    // Windows has no exec bit: the suffix decides what "Run" is offered for.
+    void testWindowsExecutablesBySuffix()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("Windows program suffixes");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        FileOperations ops;
+        for (const QString &name : {QStringLiteral("a.exe"), QStringLiteral("b.BAT"),
+                                    QStringLiteral("c.cmd"), QStringLiteral("d.txt"), QStringLiteral("e.sh")}) {
+            QFile f(dir.filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(ops.isExecutable(dir.filePath(QStringLiteral("a.exe"))));
+        QVERIFY(ops.isExecutable(dir.filePath(QStringLiteral("b.BAT"))));
+        QVERIFY(ops.isExecutable(dir.filePath(QStringLiteral("c.cmd"))));
+        QVERIFY(!ops.isExecutable(dir.filePath(QStringLiteral("d.txt"))));
+        QVERIFY(!ops.isExecutable(dir.filePath(QStringLiteral("e.sh"))));
+        QVERIFY(!ops.isExecutable(dir.path()));
+#endif
+    }
+
     // Deleting a folder must unlink a junction inside it, not empty its
     // target: Qt does not count junctions as symlinks.
     void testDeleteDoesNotFollowJunctions()

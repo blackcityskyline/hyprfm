@@ -2764,6 +2764,8 @@ ApplicationWindow {
                                         id: otherAppMa; anchors.fill: parent; hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
+                                            if (fileOps.nativeOpenWith(propertiesDialog.props.path || ""))
+                                                return
                                             appChooserDialogLoader.active = true
                                             root.appChooserDialog.filePath = propertiesDialog.props.path || ""
                                             root.appChooserDialog.mimeType = propertiesDialog.props.mimeType || ""
@@ -3157,6 +3159,8 @@ ApplicationWindow {
                     root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
                 }
                 onChooseAppRequested: (path, mimeType) => {
+                    if (fileOps.nativeOpenWith(path))
+                        return
                     appChooserDialogLoader.active = true
                     root.appChooserDialog.filePath = path
                     root.appChooserDialog.mimeType = mimeType

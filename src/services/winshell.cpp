@@ -7,6 +7,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 #include <winioctl.h>
 
@@ -104,6 +105,24 @@ QString ejectVolume(const QString &root)
     }
     CloseHandle(volume);
     return error;
+}
+
+void openWithDialog(const QString &path)
+{
+    const std::wstring file = nativePath(path);
+    OPENASINFO info{};
+    info.pcszFile = file.c_str();
+    info.oaifInFlags = OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT | OAIF_EXEC;
+    SHOpenWithDialog(activeWindow(), &info);
+}
+
+QString setWallpaper(const QString &path)
+{
+    std::wstring file = nativePath(path);
+    if (!SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, file.data(),
+                               SPIF_UPDATEINIFILE | SPIF_SENDCHANGE))
+        return QStringLiteral("Windows refused the image (error %1)").arg(GetLastError());
+    return {};
 }
 
 QString pickFolder(const QString &title, const QString &startFolder, const QString &okLabel)

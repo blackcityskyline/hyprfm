@@ -251,7 +251,7 @@ target_link_libraries(hyprfm_core PUBLIC
     Qt6::Concurrent
 )
 if(WIN32)
-    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32)
+    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32)
     # Console build until the port settles: stderr is the only log channel CI sees.
     # ponytail: flip to WIN32_EXECUTABLE ON for release packaging.
 else()
