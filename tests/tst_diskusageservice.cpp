@@ -8,7 +8,9 @@
 #include <QTest>
 #include <QLocale>
 
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 
 #include "services/diskusageservice.h"
 
@@ -130,6 +132,9 @@ private slots:
 
     void testRequestSizeForDirectorySymlinkUsesLinkSize()
     {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX links; Windows skips reparse points and does not dedupe hard links");
+#else
         if (QStandardPaths::findExecutable(QStringLiteral("du")).isEmpty())
             QSKIP("du not found in PATH");
 
@@ -158,10 +163,14 @@ private slots:
 
         const QVariantMap result = args.at(1).toMap();
         QCOMPARE(result.value("size").toLongLong(), duApparentSize({linkPath}));
+#endif
     }
 
     void testRequestSizeForFileSymlinkUsesLinkSize()
     {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX links; Windows skips reparse points and does not dedupe hard links");
+#else
         if (QStandardPaths::findExecutable(QStringLiteral("du")).isEmpty())
             QSKIP("du not found in PATH");
 
@@ -188,10 +197,14 @@ private slots:
 
         const QVariantMap result = args.at(1).toMap();
         QCOMPARE(result.value("size").toLongLong(), duApparentSize({linkPath}));
+#endif
     }
 
     void testRequestSizeCountsHardlinksOnce()
     {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX links; Windows skips reparse points and does not dedupe hard links");
+#else
         if (QStandardPaths::findExecutable(QStringLiteral("du")).isEmpty())
             QSKIP("du not found in PATH");
 
@@ -219,10 +232,14 @@ private slots:
 
         const QVariantMap result = args.at(1).toMap();
         QCOMPARE(result.value("size").toLongLong(), duApparentSize({dir.path()}));
+#endif
     }
 
     void testRequestSizeAggregatesHardlinkedSelectionsLikeDu()
     {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX links; Windows skips reparse points and does not dedupe hard links");
+#else
         if (QStandardPaths::findExecutable(QStringLiteral("du")).isEmpty())
             QSKIP("du not found in PATH");
 
@@ -250,6 +267,7 @@ private slots:
 
         const QVariantMap result = args.at(1).toMap();
         QCOMPARE(result.value("size").toLongLong(), duApparentSize({originalPath, hardlinkPath}));
+#endif
     }
 
     void testSinglePathCacheEvictsOldestEntry()

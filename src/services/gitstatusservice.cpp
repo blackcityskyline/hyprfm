@@ -35,7 +35,7 @@ void startGitTool(QProcess *process, const QStringList &arguments)
         // half-written refresh would leave the lock behind for the user.
         QStringLiteral("--no-optional-locks"),
         QStringLiteral("-c"), QStringLiteral("core.fsmonitor=false"),
-        QStringLiteral("-c"), QStringLiteral("core.hooksPath=/dev/null")
+        QStringLiteral("-c"), QStringLiteral("core.hooksPath=") + QProcess::nullDevice()
     };
     safeArguments.append(arguments);
 

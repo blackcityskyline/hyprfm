@@ -1,7 +1,9 @@
 #include "services/runtimefeaturesservice.h"
 
+#ifndef Q_OS_WIN
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#endif
 #include <QFile>
 #include <QProcess>
 #include <QStandardPaths>
@@ -61,10 +63,14 @@ bool RuntimeFeaturesService::udisksctlAvailable() const
     // org.freedesktop.UDisks2.Filesystem.Mount/Unmount), so what matters
     // is whether the UDisks2 service is reachable on the system bus, not
     // whether the udisksctl CLI is on PATH.
+#ifdef Q_OS_WIN
+    return true;   // Windows mounts drives itself; eject is a Win32 call
+#else
     auto *iface = QDBusConnection::systemBus().interface();
     if (!iface)
         return false;
     return iface->isServiceRegistered(QStringLiteral("org.freedesktop.UDisks2"));
+#endif
 }
 
 bool RuntimeFeaturesService::wlClipboardAvailable() const

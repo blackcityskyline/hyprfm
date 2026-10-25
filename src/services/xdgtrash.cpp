@@ -7,13 +7,19 @@
 #include <QStorageInfo>
 #include <QUrl>
 
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 
 namespace {
 
 QString uidString()
 {
+#ifdef Q_OS_WIN
+    return QString();   // no XDG trash on Windows; the Recycle Bin is separate
+#else
     return QString::number(geteuid());
+#endif
 }
 
 // Where GLib itself puts trashed files: $XDG_DATA_HOME/Trash, falling back to

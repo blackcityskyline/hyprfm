@@ -1,0 +1,24 @@
+#pragma once
+
+#include <QString>
+#include <QStringList>
+
+// The few Windows shell calls HyprFM needs, kept out of the portable code.
+namespace WinShell {
+
+// Only fixed local drives have a Recycle Bin. Elsewhere (USB sticks, network
+// shares) the shell would quietly delete for good, so callers must ask first.
+bool hasRecycleBin(const QString &path);
+
+// Moves every path to the Recycle Bin in one shell operation (much faster
+// than one per file). Returns the paths that are still there afterwards.
+QStringList moveToRecycleBin(const QStringList &paths);
+
+// Flushes, dismounts and ejects a removable drive ("E:/"), the way "Eject"
+// in Explorer does. Returns an error message, empty on success.
+QString ejectVolume(const QString &root);
+
+// Native folder picker; empty when cancelled.
+QString pickFolder(const QString &title, const QString &startFolder, const QString &okLabel);
+
+} // namespace WinShell

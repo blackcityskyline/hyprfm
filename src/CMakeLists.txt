@@ -5,7 +5,6 @@ set(HYPRFM_SOURCES
     services/clipboardmanager.cpp
     services/fileoperations.cpp
     services/xdgtrash.cpp
-    services/giotransferworker.cpp
     services/draghelper.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
@@ -29,6 +28,13 @@ set(HYPRFM_SOURCES
     providers/thumbnailprovider.cpp
     providers/pdfpreviewprovider.cpp
 )
+
+if(WIN32)
+    list(APPEND HYPRFM_SOURCES services/wintransferworker.cpp services/winshell.cpp
+                               models/devicemodel_win.cpp)
+else()
+    list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp)
+endif()
 
 qt_add_executable(hyprfm ${HYPRFM_SOURCES})
 
@@ -239,12 +245,17 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::DBus
     Qt6::Svg
     Qt6::Network
     Qt6::Concurrent
-    PkgConfig::GIO
 )
+if(WIN32)
+    target_link_libraries(hyprfm PRIVATE shell32 ole32 shlwapi)
+    # Console build until the port settles: stderr is the only log channel CI sees.
+    # ponytail: flip to WIN32_EXECUTABLE ON for release packaging.
+else()
+    target_link_libraries(hyprfm PRIVATE Qt6::DBus PkgConfig::GIO)
+endif()
 
 if(KF6WindowSystem_FOUND)
     target_link_libraries(hyprfm PRIVATE KF6::WindowSystem)
@@ -268,9 +279,11 @@ if(KF6WindowSystem_FOUND)
 endif()
 
 install(TARGETS hyprfm DESTINATION bin)
-install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.desktop"
-    DESTINATION share/applications)
-install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.svg"
-    DESTINATION share/icons/hicolor/scalable/apps)
-install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.metainfo.xml"
-    DESTINATION share/metainfo)
+if(NOT WIN32)
+    install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.desktop"
+        DESTINATION share/applications)
+    install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.svg"
+        DESTINATION share/icons/hicolor/scalable/apps)
+    install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.metainfo.xml"
+        DESTINATION share/metainfo)
+endif()

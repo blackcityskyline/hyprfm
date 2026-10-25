@@ -1,4 +1,5 @@
 #include "services/diskusageservice.h"
+#include "services/urischeme.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -11,7 +12,11 @@
 #include <QTimer>
 #include <QUrl>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
 #include <sys/stat.h>
+#endif
 
 size_t qHash(const DiskUsageWorker::FileId &id, size_t seed)
 {
@@ -26,9 +31,10 @@ bool isLocalPath(const QString &path)
         return false;
 
     const QUrl url(path);
-    return !url.isValid() || url.scheme().isEmpty() || url.isLocalFile();
+    return !url.isValid() || !hasUriScheme(url) || url.isLocalFile();
 }
 
+#ifndef Q_OS_WIN
 bool statPathNoFollow(const QString &path, struct stat *st)
 {
     const QByteArray encoded = QFile::encodeName(path);
@@ -47,6 +53,8 @@ bool shouldCountInode(const struct stat &st, QSet<DiskUsageWorker::FileId> *seen
     seenInodes->insert(id);
     return true;
 }
+
+#endif
 
 qint64 currentTimeMs()
 {
@@ -86,6 +94,65 @@ void DiskUsageWorker::cancel()
     m_cancelled.store(true);
 }
 
+#ifdef Q_OS_WIN
+// Windows: one FindFirstFileExW walk gives every size without a stat per
+// file. Symlinks and junctions count as nothing and are never followed
+// (C:\\Users holds junctions that loop back on themselves). Hard links are
+// rare enough on Windows to count twice. ponytail: seenInodes unused here.
+qint64 DiskUsageWorker::pathSize(const QString &path, QSet<FileId> *seenInodes,
+                                 int *unreadableCount) const
+{
+    const QFileInfo info(path);
+    if (!info.exists() && !info.isSymLink()) {
+        if (unreadableCount)
+            ++(*unreadableCount);
+        return 0;
+    }
+    if (info.isSymLink() || info.isJunction())
+        return 0;
+    if (info.isDir())
+        return directorySize(path, seenInodes, unreadableCount);
+    return info.size();
+}
+
+qint64 DiskUsageWorker::directorySize(const QString &path, QSet<FileId> *seenInodes,
+                                      int *unreadableCount) const
+{
+    QString pattern = QDir::toNativeSeparators(path);
+    if (!pattern.endsWith(QLatin1Char('\\')))
+        pattern += QLatin1Char('\\');
+    if (!pattern.startsWith(QLatin1String("\\\\")))
+        pattern.prepend(QLatin1String("\\\\?\\"));
+    const QString prefix = pattern;
+    pattern += QLatin1Char('*');
+
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileExW(reinterpret_cast<LPCWSTR>(pattern.utf16()), FindExInfoBasic, &fd,
+                                FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+    if (h == INVALID_HANDLE_VALUE) {
+        if (unreadableCount)
+            ++(*unreadableCount);
+        return 0;
+    }
+    qint64 total = 0;
+    do {
+        if (m_cancelled.load())
+            break;
+        const wchar_t *name = fd.cFileName;
+        if (name[0] == L'.' && (name[1] == L'\0' || (name[1] == L'.' && name[2] == L'\0')))
+            continue;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT
+            && (fd.dwReserved0 == IO_REPARSE_TAG_SYMLINK || fd.dwReserved0 == IO_REPARSE_TAG_MOUNT_POINT))
+            continue;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            total += directorySize(prefix + QString::fromWCharArray(name), seenInodes, unreadableCount);
+        else
+            total += (qint64(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return total;
+}
+#else
 qint64 DiskUsageWorker::pathSize(const QString &path, QSet<FileId> *seenInodes,
                                 int *unreadableCount) const
 {
@@ -140,6 +207,7 @@ qint64 DiskUsageWorker::directorySize(const QString &path, QSet<FileId> *seenIno
 
     return totalSize;
 }
+#endif
 
 DiskUsageService::DiskUsageService(QObject *parent)
     : QObject(parent)

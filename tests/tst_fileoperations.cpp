@@ -17,7 +17,9 @@
 #include <QUrl>
 #include <QUuid>
 #include <cstring>
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 #include "testdir.h"
 #include "services/fileoperations.h"
 #include "services/xdgtrash.h"
@@ -1216,6 +1218,9 @@ private slots:
 
     void testTrashHelpersForMountedVolume()
     {
+#ifdef Q_OS_WIN
+        QSKIP("XDG per-volume trash is Linux-only");
+#else
         const QString mediaRoot = "/run/media/" + qEnvironmentVariable("USER");
         QDir mediaDir(mediaRoot);
         if (!mediaDir.exists())
@@ -1233,6 +1238,7 @@ private slots:
 
         QCOMPARE(ops.trashFilesPathFor(mountPath + "/example.txt"), expectedTrashPath);
         QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
+#endif
     }
 
     void testArchiveSupportFor7zAndRar_data()

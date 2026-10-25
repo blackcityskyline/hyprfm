@@ -1,4 +1,5 @@
 #include "models/tabmodel.h"
+#include "services/urischeme.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <QUrl>
@@ -8,7 +9,7 @@ namespace {
 bool isRemoteUri(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty()
+    return url.isValid() && hasUriScheme(url)
         && url.scheme() != QStringLiteral("file")
         && url.scheme() != QStringLiteral("trash");
 }

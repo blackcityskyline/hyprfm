@@ -1,4 +1,6 @@
 #include "services/giotransferworker.h"
+#include "services/urischeme.h"
+#include "services/transferprogress.h"
 
 #include <QLoggingCategory>
 #include <QUrl>
@@ -13,7 +15,7 @@ namespace {
 bool isUriPath(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty();
+    return url.isValid() && hasUriScheme(url);
 }
 
 GFile *gFileForLocation(const QString &path)
@@ -746,41 +748,7 @@ void GioTransferWorker::emitProgress()
 
     QString speed;
     QString eta;
-
-    if (nowMs >= 2000 && transferred > 0) {
-        double bytesPerSec = static_cast<double>(transferred) / (nowMs / 1000.0);
-
-        // Speed formatting
-        if (bytesPerSec >= 1e9)
-            speed = QString::number(bytesPerSec / 1e9, 'f', 1) + " GB/s";
-        else if (bytesPerSec >= 1e6)
-            speed = QString::number(bytesPerSec / 1e6, 'f', 1) + " MB/s";
-        else if (bytesPerSec >= 1e3)
-            speed = QString::number(bytesPerSec / 1e3, 'f', 1) + " KB/s";
-        else
-            speed = QString::number(static_cast<int>(bytesPerSec)) + " B/s";
-
-        // ETA
-        qint64 remaining = m_totalBytes - transferred;
-        if (remaining > 0 && bytesPerSec > 0) {
-            int secs = static_cast<int>(remaining / bytesPerSec);
-            if (secs >= 3600) {
-                int h = secs / 3600;
-                int m = (secs % 3600) / 60;
-                int s = secs % 60;
-                eta = QString("%1:%2:%3")
-                    .arg(h)
-                    .arg(m, 2, 10, QLatin1Char('0'))
-                    .arg(s, 2, 10, QLatin1Char('0'));
-            } else {
-                int m = secs / 60;
-                int s = secs % 60;
-                eta = QString("%1:%2")
-                    .arg(m)
-                    .arg(s, 2, 10, QLatin1Char('0'));
-            }
-        }
-    }
+    formatTransferRate(transferred, m_totalBytes, nowMs, &speed, &eta);
 
     emit progressUpdated(progress, speed, eta);
 }

@@ -6,6 +6,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 // Dolphin-inspired test fixture: auto-cleanup temporary directory with
 // convenience methods for creating known file hierarchies.
@@ -57,7 +60,16 @@ public:
         QString linkPath = path() + "/" + linkRelPath;
         QFileInfo info(linkPath);
         QDir().mkpath(info.absolutePath());
+#ifdef Q_OS_WIN
+        // QFile::link makes a .lnk shortcut on Windows; tests mean a symlink.
+        DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+        if (QFileInfo(target).isDir())
+            flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+        CreateSymbolicLinkW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(linkPath).utf16()),
+                            reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(target).utf16()), flags);
+#else
         QFile::link(target, linkPath);
+#endif
         return linkPath;
     }
 

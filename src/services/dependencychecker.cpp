@@ -1,7 +1,9 @@
 #include "services/dependencychecker.h"
 
+#ifndef Q_OS_WIN
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#endif
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -661,8 +663,12 @@ bool DependencyChecker::hasHostExecutable(const QString &name)
 
 bool DependencyChecker::udisks2Reachable()
 {
+#ifdef Q_OS_WIN
+    return false;
+#else
     auto *iface = QDBusConnection::systemBus().interface();
     if (!iface)
         return false;
     return iface->isServiceRegistered(QStringLiteral("org.freedesktop.UDisks2"));
+#endif
 }

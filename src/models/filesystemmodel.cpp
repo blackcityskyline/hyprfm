@@ -1,7 +1,12 @@
 #include "models/filesystemmodel.h"
+#include "services/urischeme.h"
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
 #include <dirent.h>
 #include <sys/stat.h>
+#endif
 #include "services/cloudmounts.h"
 #include "services/gitstatusservice.h"
 #include "services/xdgtrash.h"
@@ -84,7 +89,7 @@ void startHostToolProcess(QProcess *process, const QString &program, const QStri
 bool isRemoteUri(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty()
+    return url.isValid() && hasUriScheme(url)
         && url.scheme() != QStringLiteral("file")
         && url.scheme() != QStringLiteral("trash");
 }
@@ -111,7 +116,7 @@ QString remoteAuthority(const QString &uri)
 QString normalizeRemoteUri(const QString &path)
 {
     const QUrl url(path);
-    if (!url.isValid() || url.scheme().isEmpty())
+    if (!url.isValid() || !hasUriScheme(url))
         return path;
 
     const QUrl normalizedUrl = url.adjusted(QUrl::NormalizePathSegments);
@@ -149,7 +154,7 @@ QString normalizeLocation(const QString &path)
     if (url.isValid() && url.scheme() == QStringLiteral("file"))
         return QDir::cleanPath(url.toLocalFile());
 
-    if (url.isValid() && !url.scheme().isEmpty())
+    if (url.isValid() && hasUriScheme(url))
         return normalizeRemoteUri(path);
 
     return QDir::cleanPath(path);
@@ -158,7 +163,7 @@ QString normalizeLocation(const QString &path)
 QString gioLocationArg(const QString &path)
 {
     const QString normalized = normalizeLocation(path);
-    if (QUrl(normalized).scheme().isEmpty())
+    if (!hasUriScheme(QUrl(normalized)))
         return normalized;
     return normalized;
 }
@@ -1223,6 +1228,57 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
 // dir-ness follows its target the way QFileInfo::isDir() does, an entry on a
 // filesystem that reports DT_UNKNOWN, and every entry when the listing is
 // ordered by size or time.
+#ifdef Q_OS_WIN
+// FindFirstFileExW hands back name, attributes, size and mtime for every
+// entry in one call, so the Windows listing is always fully statted for free.
+// LARGE_FETCH asks the filesystem for bigger batches per round trip.
+// Hidden means the hidden attribute (or a leading dot, for repos and
+// dotfiles synced from elsewhere); hidden+system files stay out even when
+// hidden files are shown, as in Explorer.
+QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &rootPath,
+                                                                bool showHidden, bool wantStat)
+{
+    Q_UNUSED(wantStat)
+    QList<Entry> entries;
+    QString pattern = QDir::toNativeSeparators(rootPath);
+    if (!pattern.endsWith(QLatin1Char('\\')))
+        pattern += QLatin1Char('\\');
+    pattern += QLatin1Char('*');
+    if (!pattern.startsWith(QLatin1String("\\\\")))
+        pattern.prepend(QLatin1String("\\\\?\\"));   // past MAX_PATH
+
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileExW(reinterpret_cast<LPCWSTR>(pattern.utf16()), FindExInfoBasic, &fd,
+                                FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+    if (h == INVALID_HANDLE_VALUE)
+        return entries;
+    constexpr DWORD kProtected = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM;
+    do {
+        const wchar_t *name = fd.cFileName;
+        if (name[0] == L'.' && (name[1] == L'\0' || (name[1] == L'.' && name[2] == L'\0')))
+            continue;
+        const DWORD attrs = fd.dwFileAttributes;
+        if ((attrs & kProtected) == kProtected)
+            continue;
+        if (!showHidden && ((attrs & FILE_ATTRIBUTE_HIDDEN) || name[0] == L'.'))
+            continue;
+
+        Entry entry;
+        entry.name = QString::fromWCharArray(name);
+        entry.isDir = attrs & FILE_ATTRIBUTE_DIRECTORY;
+        entry.isSymLink = (attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+            && (fd.dwReserved0 == IO_REPARSE_TAG_SYMLINK || fd.dwReserved0 == IO_REPARSE_TAG_MOUNT_POINT);
+        entry.size = entry.isDir ? 0 : (qint64(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+        const qint64 ticks = (qint64(fd.ftLastWriteTime.dwHighDateTime) << 32)
+                           | fd.ftLastWriteTime.dwLowDateTime;
+        entry.modifiedMs = (ticks - 116444736000000000LL) / 10000;   // 1601 -> 1970, 100 ns -> ms
+        entry.statted = true;
+        entries.append(std::move(entry));
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return entries;
+}
+#else
 QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &rootPath,
                                                                 bool showHidden, bool wantStat)
 {
@@ -1281,6 +1337,7 @@ QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &r
     ::closedir(dir);
     return entries;
 }
+#endif
 
 // Mirrors QDir's own ordering: directories first when asked, size largest
 // first, time newest first, ties broken by name, and Reversed flipping

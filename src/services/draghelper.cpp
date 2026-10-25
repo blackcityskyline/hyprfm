@@ -1,4 +1,5 @@
 #include "draghelper.h"
+#include "services/urischeme.h"
 #include "providers/iconprovider.h"
 
 #include <QDrag>
@@ -54,7 +55,7 @@ void DragHelper::startDrag(const QStringList &filePaths,
         urls.reserve(paths.size());
         for (const QString &path : paths) {
             const QUrl url(path);
-            urls.append(url.isValid() && !url.scheme().isEmpty() ? url : QUrl::fromLocalFile(path));
+            urls.append(url.isValid() && hasUriScheme(url) ? url : QUrl::fromLocalFile(path));
         }
         mimeData->setUrls(urls);
         drag->setMimeData(mimeData);

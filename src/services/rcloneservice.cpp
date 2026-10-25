@@ -7,9 +7,11 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QDebug>
+#ifndef Q_OS_WIN
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 RcloneService::RcloneService(QObject *parent)
     : QObject(parent)

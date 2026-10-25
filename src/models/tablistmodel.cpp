@@ -1,4 +1,5 @@
 #include "models/tablistmodel.h"
+#include "services/urischeme.h"
 #include <QDir>
 #include <QJsonObject>
 #include <QFileInfo>
@@ -14,7 +15,7 @@ QString normalizedSessionPath(const QString &path)
     const QUrl url(path);
     if (url.scheme() == QStringLiteral("trash"))
         return path;
-    if (url.isValid() && !url.scheme().isEmpty() && url.scheme() != QStringLiteral("file"))
+    if (url.isValid() && hasUriScheme(url) && url.scheme() != QStringLiteral("file"))
         return path;
 
     QFileInfo info(path);

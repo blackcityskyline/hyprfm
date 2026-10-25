@@ -20,15 +20,16 @@
 #include <QSaveFile>
 #include <QTimer>
 #include <QFontDatabase>
+#ifndef Q_OS_WIN
 #include <QDBusArgument>
 #include <QDBusMessage>
 #include <QDBusInterface>
 #include <QDBusReply>
+#endif
 #include <QStyleHints>
 #include <QFileInfo>
 #include <QLocalServer>
 #include <QLocalSocket>
-#include <unistd.h>
 #ifdef HYPRFM_HAS_KWINDOWSYSTEM
 #include <KWindowEffects>
 #endif
@@ -63,12 +64,14 @@
 #include <QEvent>
 #include <functional>
 #include <QUrl>
+#ifdef Q_OS_LINUX
 #include <dlfcn.h>
+#include <signal.h>
+#endif
 #include <thread>
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
-#include <signal.h>
 #include <QCryptographicHash>
 #include <QThreadPool>
 #include <QProcess>
@@ -78,6 +81,7 @@ Q_IMPORT_QML_PLUGIN(QuillPlugin)
 
 namespace {
 
+#ifdef Q_OS_LINUX
 // Renderer choice: Vulkan when the machine has a hardware Vulkan device,
 // OpenGL otherwise. On Mesa the OpenGL driver maps libLLVM for its shader
 // compiler while RADV/ANV do not: ~47 MB less PSS and a slightly faster
@@ -391,6 +395,15 @@ private:
     bool m_pinnedDriver = false;
     bool m_probeAfterFirstFrame = false;
 };
+#else
+// Windows: Qt Quick's default Direct3D 11 backend needs no probing.
+class RendererChoice
+{
+public:
+    bool usesVulkan() const { return false; }
+    void firstFramePainted() {}
+};
+#endif // Q_OS_LINUX
 
 // What one main window owns. Everything the windows share (config, file
 // operations, clipboard, devices, ...) lives on the engine's root context.
@@ -444,6 +457,7 @@ struct DesktopSettings
 DesktopSettings readDesktopSettings()
 {
     DesktopSettings settings;
+#ifndef Q_OS_WIN   // no portal; Qt reads the Windows theme and fonts itself
     if (!QDBusConnection::sessionBus().isConnected())
         return settings;
 
@@ -500,6 +514,7 @@ DesktopSettings readDesktopSettings()
             settings.fontFamily = fontName;
         }
     }
+#endif // Q_OS_WIN
     return settings;
 }
 
@@ -575,6 +590,7 @@ error   = "#f38ba8"  # errors, destructive actions
 // the user flips light/dark, so it is available even when Qt cannot see it.
 static bool desktopPrefersLight()
 {
+#ifndef Q_OS_WIN
     QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
                           QStringLiteral("/org/freedesktop/portal/desktop"),
                           QStringLiteral("org.freedesktop.portal.Settings"),
@@ -596,6 +612,7 @@ static bool desktopPrefersLight()
                 return scheme == 2;
         }
     }
+#endif
     // No portal, or it has no preference: trust Qt when it knows, else assume
     // dark, which is what this defaulted to before the portal was consulted.
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light;
@@ -638,6 +655,7 @@ int main(int argc, char *argv[])
     // display" (or "Failed to create wl_display"), so say what is missing.
     // An explicit QT_QPA_PLATFORM (offscreen in tests and the AppImage smoke
     // test, or a user's choice) is left for Qt to judge.
+#ifndef Q_OS_WIN
     if (qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") && qEnvironmentVariableIsEmpty("DISPLAY")
         && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
         fprintf(stderr,
@@ -650,6 +668,7 @@ int main(int argc, char *argv[])
                 "\n");
         return 1;
     }
+#endif
 
     // Extract an optional path argument. We skip flag-style args so Qt's
     // own options (e.g. `-style`, `-qmljsdebugger`) don't get mistaken
@@ -698,7 +717,7 @@ int main(int argc, char *argv[])
     };
     mark("QGuiApplication ready");
 
-#if QT_CONFIG(vulkan)
+#if defined(Q_OS_LINUX) && QT_CONFIG(vulkan)
     if (renderer.usesVulkan())
         std::thread(warmVulkanDriver).detach();
 #endif

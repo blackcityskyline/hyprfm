@@ -1,12 +1,19 @@
 #include <QTest>
 #include <QSignalSpy>
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 #include <QThread>
 #include <QTimer>
 #include "testdir.h"
+#ifdef Q_OS_WIN
+#include "services/wintransferworker.h"
+#else
 #include "services/giotransferworker.h"
+#endif
+#include "services/transferworker.h"
 
-class TestGioTransferWorker : public QObject
+class TestTransferWorker : public QObject
 {
     Q_OBJECT
 
@@ -16,18 +23,18 @@ private slots:
         TestDir src, dst;
         src.createFile("test.bin", QByteArray(4096, 'x'));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/test.bin", dst.path() + "/test.bin", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, false);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
 
         QVERIFY(finishSpy.wait(10000));
@@ -47,18 +54,18 @@ private slots:
         src.createFile("dir/b.txt", QByteArray(2000, 'b'));
         src.createFile("dir/sub/c.txt", QByteArray(3000, 'c'));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/dir", dst.path() + "/dir", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, false);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
 
         QVERIFY(finishSpy.wait(10000));
@@ -82,15 +89,15 @@ private slots:
         dst.createFile("target.txt", "keep me");
         dst.createFile("notadir", "x");   // backup parent is a file → mkdir and move fail
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/new.txt", dst.path() + "/target.txt",
                       dst.path() + "/notadir/backup.txt", true});
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() { worker.execute(items, false); });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
         QVERIFY(finishSpy.wait(10000));
         QCOMPARE(finishSpy.constFirst().at(0).toBool(), false);
@@ -106,8 +113,12 @@ private slots:
     // must leave the source alone.
     void testMoveKeepsSourceWhenTreeCannotBeRead()
     {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX permissions; a Windows move within a volume is a rename anyway");
+#else
         if (geteuid() == 0)
             QSKIP("root ignores directory permissions");
+#endif
         TestDir src, dst;
         src.createDir("tree");
         src.createFile("tree/a.txt", "a");
@@ -116,14 +127,14 @@ private slots:
         const QString locked = src.path() + "/tree/locked";
         QVERIFY(QFile::setPermissions(locked, QFileDevice::Permissions()));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/tree", dst.path() + "/tree", {}, false});
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() { worker.execute(items, true); });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
         const bool finished = finishSpy.wait(10000);
         QFile::setPermissions(locked, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
@@ -140,18 +151,18 @@ private slots:
         TestDir src, dst;
         src.createFile("move_me.txt", QByteArray(2048, 'm'));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/move_me.txt", dst.path() + "/move_me.txt", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, true);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
 
         QVERIFY(finishSpy.wait(10000));
@@ -172,18 +183,18 @@ private slots:
         src.createDir("tree");
         src.createSymlink(src.path() + "/outside", "tree/lnk");
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/tree", dst.path() + "/tree", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, true);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
 
         QVERIFY(finishSpy.wait(10000));
@@ -203,18 +214,18 @@ private slots:
         src.createFile("real.txt", "hello");
         src.createSymlink(src.path() + "/real.txt", "link.txt");
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/link.txt", dst.path() + "/link.txt", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, false);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
         thread.start();
 
         QVERIFY(finishSpy.wait(10000));
@@ -233,21 +244,21 @@ private slots:
         TestDir src, dst;
         src.createFile("big.bin", QByteArray(16 * 1024 * 1024, 'x'));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/big.bin", dst.path() + "/big.bin", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
 
         QThread thread;
         worker.moveToThread(&thread);
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, false);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
 
         // Cancel after first progress update
-        connect(&worker, &GioTransferWorker::progressUpdated, &worker, [&](double, const QString &, const QString &) {
+        connect(&worker, &TransferWorker::progressUpdated, &worker, [&](double, const QString &, const QString &) {
             worker.cancel();
         }, Qt::DirectConnection);
 
@@ -265,11 +276,11 @@ private slots:
         TestDir src, dst;
         src.createFile("pause_test.bin", QByteArray(8 * 1024 * 1024, 'p'));
 
-        GioTransferWorker worker;
-        QList<GioTransferWorker::TransferItem> items;
+        TransferWorker worker;
+        QList<TransferWorker::TransferItem> items;
         items.append({src.path() + "/pause_test.bin", dst.path() + "/pause_test.bin", {}, false});
 
-        QSignalSpy finishSpy(&worker, &GioTransferWorker::finished);
+        QSignalSpy finishSpy(&worker, &TransferWorker::finished);
         bool paused = false;
 
         QThread thread;
@@ -277,12 +288,12 @@ private slots:
         connect(&thread, &QThread::started, &worker, [&]() {
             worker.execute(items, false);
         });
-        connect(&worker, &GioTransferWorker::finished, &thread, &QThread::quit);
+        connect(&worker, &TransferWorker::finished, &thread, &QThread::quit);
 
         // progressUpdated is queued to the main thread; call pause() directly,
         // then schedule resume() on the main thread via a single-shot timer so
         // it is posted back to the worker thread via an auto-connection.
-        connect(&worker, &GioTransferWorker::progressUpdated, this, [&](double, const QString &, const QString &) {
+        connect(&worker, &TransferWorker::progressUpdated, this, [&](double, const QString &, const QString &) {
             if (!paused) {
                 paused = true;
                 worker.pause();
@@ -304,5 +315,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestGioTransferWorker)
+QTEST_GUILESS_MAIN(TestTransferWorker)
 #include "tst_giotransferworker.moc"

@@ -1,5 +1,9 @@
 #include "models/devicemodel.h"
+#include "services/urischeme.h"
 
+// Windows: see devicemodel_win.cpp. Everything up to rowCount() is the
+// UDisks2 + GIO backend.
+#ifndef Q_OS_WIN
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -874,7 +878,7 @@ void DeviceModel::mount(int index)
         const QString mountUri = entry.mountPoint.isEmpty() ? entry.devicePath : entry.mountPoint;
 
         if (!entry.gioVolume) {
-            if (QUrl(mountUri).scheme().isEmpty()) {
+            if (!hasUriScheme(QUrl(mountUri))) {
                 refresh();
                 return;
             }
@@ -998,6 +1002,8 @@ void DeviceModel::mount(int index)
         watcher->deleteLater();
     });
 }
+
+#endif // !Q_OS_WIN
 
 int DeviceModel::rowCount(const QModelIndex &) const
 {

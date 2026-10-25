@@ -1,13 +1,21 @@
 #include "services/fileoperations.h"
+#include "services/urischeme.h"
 #include "services/archivepassword.h"
 #include "services/cloudmounts.h"
+#ifdef Q_OS_WIN
+#include "services/winshell.h"
+#include "services/wintransferworker.h"
+#else
 #include "services/giotransferworker.h"
+#endif
 #include "services/xdgtrash.h"
 #include <QBuffer>
 #include <QClipboard>
+#ifndef Q_OS_WIN
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
+#endif
 #include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
@@ -29,11 +37,13 @@
 #include <QUuid>
 #include <QUrl>
 #include <algorithm>
-#include <unistd.h>
 
+#ifndef Q_OS_WIN
+#include <unistd.h>
 #undef signals
 #include <gio/gio.h>
 #define signals Q_SIGNALS
+#endif
 
 namespace {
 
@@ -183,13 +193,13 @@ QString entryNameError(const QString &name)
 bool isUriPath(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty();
+    return url.isValid() && hasUriScheme(url);
 }
 
 bool isRemoteUriPath(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty()
+    return url.isValid() && hasUriScheme(url)
         && url.scheme() != QStringLiteral("file")
         && url.scheme() != QStringLiteral("trash");
 }
@@ -216,7 +226,7 @@ QString remoteAuthority(const QString &uri)
 QString normalizeRemoteUri(const QString &path)
 {
     const QUrl url(path);
-    if (!url.isValid() || url.scheme().isEmpty())
+    if (!url.isValid() || !hasUriScheme(url))
         return path;
 
     const QUrl normalizedUrl = url.adjusted(QUrl::NormalizePathSegments);
@@ -250,7 +260,7 @@ QString normalizeLocation(const QString &path)
     if (url.isValid() && url.scheme() == QStringLiteral("file"))
         return QDir::cleanPath(url.toLocalFile());
 
-    if (url.isValid() && !url.scheme().isEmpty())
+    if (url.isValid() && hasUriScheme(url))
         return normalizeRemoteUri(path);
 
     return QDir::cleanPath(path);
@@ -387,6 +397,7 @@ QString joinLocation(const QString &parentPath, const QString &name)
     return QDir(normalizedParent).filePath(name);
 }
 
+#ifndef Q_OS_WIN
 GFile *gFileForLocation(const QString &path)
 {
     const QByteArray utf8 = path.toUtf8();
@@ -509,6 +520,12 @@ QVariantMap remotePathInfo(const QString &path)
     return result;
 }
 
+#else
+// No gvfs on Windows: remote URIs never reach the GIO paths below.
+bool gioPathExists(const QString &) { return false; }
+QVariantMap remotePathInfo(const QString &) { return {}; }
+#endif
+
 QVariantMap sourceInfoForPath(const QString &path)
 {
     const QString normalized = normalizeLocation(path);
@@ -538,6 +555,11 @@ bool moveLocationSync(const QString &sourcePath, const QString &targetPath, QStr
         return ok;
     }
 
+#ifdef Q_OS_WIN
+    if (error)
+        *error = QStringLiteral("Remote locations are not supported on Windows");
+    return false;
+#else
     GFile *src = gFileForLocation(normalizedSource);
     GFile *dst = gFileForLocation(normalizedTarget);
     GError *gErr = nullptr;
@@ -548,6 +570,7 @@ bool moveLocationSync(const QString &sourcePath, const QString &targetPath, QStr
     g_object_unref(src);
     g_object_unref(dst);
     return ok;
+#endif
 }
 
 bool makeDirectorySync(const QString &path, QString *error = nullptr)
@@ -560,6 +583,11 @@ bool makeDirectorySync(const QString &path, QString *error = nullptr)
         return ok;
     }
 
+#ifdef Q_OS_WIN
+    if (error)
+        *error = QStringLiteral("Remote locations are not supported on Windows");
+    return false;
+#else
     GFile *file = gFileForLocation(normalized);
     GError *gErr = nullptr;
     const bool ok = g_file_make_directory_with_parents(file, nullptr, &gErr);
@@ -569,6 +597,7 @@ bool makeDirectorySync(const QString &path, QString *error = nullptr)
     if (gErr) g_error_free(gErr);
     g_object_unref(file);
     return ok || alreadyExists;
+#endif
 }
 
 bool createEmptyFileSync(const QString &path, QString *error = nullptr)
@@ -586,6 +615,11 @@ bool createEmptyFileSync(const QString &path, QString *error = nullptr)
         return ok;
     }
 
+#ifdef Q_OS_WIN
+    if (error)
+        *error = QStringLiteral("Remote locations are not supported on Windows");
+    return false;
+#else
     GFile *file = gFileForLocation(normalized);
     GError *gErr = nullptr;
     GFileOutputStream *stream = g_file_create(file, G_FILE_CREATE_NONE, nullptr, &gErr);
@@ -601,6 +635,7 @@ bool createEmptyFileSync(const QString &path, QString *error = nullptr)
     }
     g_object_unref(file);
     return true;
+#endif
 }
 
 bool pathExistsSync(const QString &path)
@@ -692,7 +727,11 @@ QVariantList buildBreadcrumbs(const QString &path)
 
 QString currentUidString()
 {
+#ifdef Q_OS_WIN
+    return {};   // ponytail: XDG per-volume trash naming; Windows uses the Recycle Bin
+#else
     return QString::number(geteuid());
+#endif
 }
 
 QString trashUriRootPath()
@@ -1199,6 +1238,16 @@ int FileOperations::trashFiles(const QStringList &paths)
             QString lastError;
             QStringList unsupported;
             const int total = paths.size();
+#ifdef Q_OS_WIN
+            QStringList recyclable;
+            for (const QString &path : paths) {
+                const QString normalized = normalizeLocation(path);
+                (WinShell::hasRecycleBin(normalized) ? recyclable : unsupported).append(normalized);
+            }
+            report(0, total, recyclable.isEmpty() ? QString() : locationFileName(recyclable.first()));
+            if (!recyclable.isEmpty() && !WinShell::moveToRecycleBin(recyclable).isEmpty())
+                lastError = QStringLiteral("Some items could not be moved to the Recycle Bin");
+#else
             // Inside a Flatpak, GLib's g_file_trash() puts files in the
             // *sandbox's* trash (~/.var/app/<app-id>/data/Trash) because
             // XDG_DATA_HOME is overridden. Shell out to host gio so files
@@ -1236,6 +1285,7 @@ int FileOperations::trashFiles(const QStringList &paths)
                 }
                 g_object_unref(file);
             }
+#endif
             // Network shares (SMB, FTP, ...) and removable drives without a
             // usable trash directory both report NOT_SUPPORTED. Deleting
             // those for good is the user's call, so ask instead of falling
@@ -1423,11 +1473,15 @@ int FileOperations::deleteFiles(const QStringList &paths)
                 report(i, total, locationFileName(normalized));
 
                 if (isUriPath(normalized)) {
+#ifdef Q_OS_WIN
+                    lastError = QStringLiteral("Remote locations are not supported on Windows");
+#else
                     GFile *file = gFileForLocation(normalized);
                     QString err;
                     if (!deleteGFileRecursive(file, &err) && !err.isEmpty())
                         lastError = err;
                     g_object_unref(file);
+#endif
                 } else {
                     QFileInfo info(normalized);
                     // A symlink to a directory must be unlinked, never
@@ -2502,6 +2556,21 @@ QString FileOperations::newExtractionFolder(const QString &archivePath)
     return dir;
 }
 
+#ifdef Q_OS_WIN
+// "Extract To...": the shell's own folder picker. Modal, so the answer is here
+// by the time it returns.
+void FileOperations::extractArchiveTo(const QString &archivePath)
+{
+    const QString destination = WinShell::pickFolder(
+        QStringLiteral("Extract \u201c%1\u201d To").arg(locationFileName(archivePath)),
+        parentLocation(normalizeLocation(archivePath)), QStringLiteral("Extract Here"));
+    if (!destination.isEmpty())
+        extractArchive(archivePath, destination, archivePassword(archivePath));
+}
+
+void FileOperations::onExtractFolderChosen(uint, const QVariantMap &) {}
+void FileOperations::stopWaitingForExtractFolder() {}
+#else
 namespace {
 const QString kPortalService = QStringLiteral("org.freedesktop.portal.Desktop");
 const QString kPortalRequest = QStringLiteral("org.freedesktop.portal.Request");
@@ -2581,6 +2650,7 @@ void FileOperations::stopWaitingForExtractFolder()
     m_extractToRequest.clear();
     m_extractToArchive.clear();
 }
+#endif
 
 QString FileOperations::archivePassword(const QString &archivePath) const
 {
@@ -2758,7 +2828,7 @@ int FileOperations::startSimpleOperation(const QString &statusText, const QStrin
 
 int FileOperations::startGioTransfer(const QVariantList &operations, bool moveOperation)
 {
-    QList<GioTransferWorker::TransferItem> items;
+    QList<TransferWorker::TransferItem> items;
     int itemCount = 0;
     QStringList changedPaths;
     QStringList targetPaths;
@@ -2789,7 +2859,7 @@ int FileOperations::startGioTransfer(const QVariantList &operations, bool moveOp
     transfer.targetPaths = targetPaths;
 
     auto *thread = new QThread;
-    auto *worker = new GioTransferWorker;
+    auto *worker = new TransferWorker;
     worker->moveToThread(thread);
     transfer.thread = thread;
     transfer.worker = worker;
@@ -2798,7 +2868,7 @@ int FileOperations::startGioTransfer(const QVariantList &operations, bool moveOp
 
     connect(thread, &QThread::finished, worker, &QObject::deleteLater);
 
-    connect(worker, &GioTransferWorker::progressUpdated, this,
+    connect(worker, &TransferWorker::progressUpdated, this,
             [this, id](double progress, const QString &speed, const QString &eta) {
         if (auto *t = findTransfer(id)) {
             t->progress = progress;
@@ -2808,7 +2878,7 @@ int FileOperations::startGioTransfer(const QVariantList &operations, bool moveOp
         }
     });
 
-    connect(worker, &GioTransferWorker::itemStarted, this,
+    connect(worker, &TransferWorker::itemStarted, this,
             [this, id](const QString &sourcePath, const QString &targetPath) {
         Q_UNUSED(targetPath)
         if (auto *t = findTransfer(id)) {
@@ -2817,7 +2887,7 @@ int FileOperations::startGioTransfer(const QVariantList &operations, bool moveOp
         }
     });
 
-    connect(worker, &GioTransferWorker::finished, this,
+    connect(worker, &TransferWorker::finished, this,
             [this, id](bool success, const QString &error) {
         if (auto *t = findTransfer(id)) {
             emitChangedPaths(t->changedPaths);

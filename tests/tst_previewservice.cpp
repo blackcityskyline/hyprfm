@@ -2,7 +2,9 @@
 #include <QTest>
 #include <QThread>
 #include <functional>
+#ifndef Q_OS_WIN
 #include <sys/stat.h>
+#endif
 #include <QDir>
 #include <QFile>
 #include <QPainter>
@@ -249,6 +251,9 @@ private slots:
 
     void testFifoPreviewDoesNotBlock()
     {
+#ifdef Q_OS_WIN
+        QSKIP("no FIFOs on Windows");
+#else
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString fifo = dir.path() + "/notes";
@@ -260,6 +265,7 @@ private slots:
             preview = service.loadTextPreview(fifo, 1024, 20);
         }), "loadTextPreview blocked on a FIFO");
         QVERIFY(!preview.value("error").toString().isEmpty());
+#endif
     }
 
     void testBatOutputIsBoundedByMaxBytes()

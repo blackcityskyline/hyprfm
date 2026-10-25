@@ -1,3 +1,16 @@
+if(WIN32)
+    set(HYPRFM_PLATFORM_SRC ${CMAKE_SOURCE_DIR}/src/services/wintransferworker.cpp
+                            ${CMAKE_SOURCE_DIR}/src/services/winshell.cpp)
+    set(HYPRFM_PLATFORM_LIBS shell32 ole32 shlwapi)
+    set(HYPRFM_DEVICE_SRC ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
+                          ${CMAKE_SOURCE_DIR}/src/models/devicemodel_win.cpp
+                          ${CMAKE_SOURCE_DIR}/src/services/winshell.cpp)
+else()
+    set(HYPRFM_PLATFORM_SRC ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp)
+    set(HYPRFM_PLATFORM_LIBS Qt6::DBus PkgConfig::GIO)
+    set(HYPRFM_DEVICE_SRC ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp)
+endif()
+
 # Tests will be added as backend classes are implemented
 
 add_executable(tst_configmanager tst_configmanager.cpp
@@ -48,10 +61,10 @@ add_test(NAME tst_bookmarkmodel COMMAND tst_bookmarkmodel)
 add_executable(tst_fileoperations tst_fileoperations.cpp
     ${CMAKE_SOURCE_DIR}/src/services/fileoperations.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
-    ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp
+    ${HYPRFM_PLATFORM_SRC}
 )
 target_include_directories(tst_fileoperations PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core Qt6::Gui ${HYPRFM_PLATFORM_LIBS})
 add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
 # Shares gio trash state with tst_giotransferworker; serialize to avoid flakes.
 set_tests_properties(tst_fileoperations PROPERTIES
@@ -64,10 +77,10 @@ add_executable(tst_undomanager tst_undomanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
     ${CMAKE_SOURCE_DIR}/src/services/fileoperations.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
-    ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp
+    ${HYPRFM_PLATFORM_SRC}
 )
 target_include_directories(tst_undomanager PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_undomanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_undomanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui ${HYPRFM_PLATFORM_LIBS})
 add_test(NAME tst_undomanager COMMAND tst_undomanager)
 
 add_executable(tst_previewservice tst_previewservice.cpp
@@ -128,7 +141,7 @@ target_compile_definitions(tst_detailedview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_detailedview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_detailedview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent ${HYPRFM_PLATFORM_LIBS})
 add_dependencies(tst_detailedview hyprfm)
 add_test(NAME tst_detailedview COMMAND tst_detailedview)
 
@@ -150,7 +163,7 @@ target_compile_definitions(tst_millerview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent ${HYPRFM_PLATFORM_LIBS})
 add_dependencies(tst_millerview hyprfm)
 add_test(NAME tst_millerview COMMAND tst_millerview)
 
@@ -172,7 +185,7 @@ target_compile_definitions(tst_viewcontextmenu PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent ${HYPRFM_PLATFORM_LIBS})
 add_dependencies(tst_viewcontextmenu hyprfm)
 add_test(NAME tst_viewcontextmenu COMMAND tst_viewcontextmenu)
 
@@ -187,7 +200,7 @@ add_executable(tst_toolbar tst_toolbar.cpp viewharness.h
 )
 target_include_directories(tst_toolbar PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/third_party)
 target_compile_definitions(tst_toolbar PRIVATE TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}" TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src")
-target_link_libraries(tst_toolbar PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_toolbar PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent ${HYPRFM_PLATFORM_LIBS})
 add_dependencies(tst_toolbar hyprfm)
 add_test(NAME tst_toolbar COMMAND tst_toolbar)
 
@@ -197,14 +210,14 @@ add_executable(tst_mainwindow tst_mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/src/services/clipboardmanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/fileoperations.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
-    ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp
+    ${HYPRFM_PLATFORM_SRC}
     ${CMAKE_SOURCE_DIR}/src/services/draghelper.cpp
     ${CMAKE_SOURCE_DIR}/src/models/tabmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/tablistmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/bookmarkmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/filesystemmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
-    ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
+    ${HYPRFM_DEVICE_SRC}
     ${CMAKE_SOURCE_DIR}/src/models/recentfilesmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/searchresultsmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/searchproxymodel.cpp
@@ -231,7 +244,7 @@ target_compile_definitions(tst_mainwindow PRIVATE
     HYPRFM_DATA_DIR="${CMAKE_SOURCE_DIR}"
     HYPRFM_VERSION="test"
 )
-target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Network Qt6::Concurrent ${HYPRFM_PLATFORM_LIBS})
 add_dependencies(tst_mainwindow hyprfm)
 add_test(NAME tst_mainwindow COMMAND tst_mainwindow)
 
@@ -240,10 +253,10 @@ add_test(NAME tst_mainwindow COMMAND tst_mainwindow)
 set_tests_properties(tst_detailedview tst_millerview tst_viewcontextmenu tst_toolbar tst_mainwindow PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 add_executable(tst_devicemodel tst_devicemodel.cpp
-    ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
+    ${HYPRFM_DEVICE_SRC}
 )
 target_include_directories(tst_devicemodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core ${HYPRFM_PLATFORM_LIBS})
 add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
 
 add_executable(tst_iconprovider tst_iconprovider.cpp)
@@ -301,10 +314,10 @@ target_link_libraries(tst_searchservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_searchservice COMMAND tst_searchservice)
 
 add_executable(tst_giotransferworker tst_giotransferworker.cpp
-    ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp
+    ${HYPRFM_PLATFORM_SRC}
 )
 target_include_directories(tst_giotransferworker PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_giotransferworker PRIVATE Qt6::Test Qt6::Core PkgConfig::GIO)
+target_link_libraries(tst_giotransferworker PRIVATE Qt6::Test Qt6::Core ${HYPRFM_PLATFORM_LIBS})
 add_test(NAME tst_giotransferworker COMMAND tst_giotransferworker)
 # gio spawns child processes and shares trash/mount state with other tests;
 # running serially prevents flaky timeouts under `ctest -j`.
@@ -313,6 +326,7 @@ set_tests_properties(tst_giotransferworker PROPERTIES
     TIMEOUT 120
 )
 
+if(NOT WIN32)
 # Multi-window / single-instance arbitration lives in main(), so it is covered
 # by driving the real binary. Skips itself (exit 77) without a Wayland session.
 add_test(NAME tst_instance_launch
@@ -323,6 +337,7 @@ set_tests_properties(tst_instance_launch PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 120
 )
+endif()
 
 # --help / --version answer before any Qt GUI setup, so unlike the launch test
 # these run anywhere, including headless CI.

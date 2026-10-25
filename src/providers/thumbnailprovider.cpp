@@ -1,4 +1,5 @@
 #include "thumbnailprovider.h"
+#include "services/urischeme.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -79,8 +80,8 @@ static QMimeType mimeForLocation(const QString &path)
 {
     static QMimeDatabase mimeDb;
     const QUrl url(path);
-    if (url.scheme() == QLatin1String("file") || url.scheme().isEmpty())
-        return mimeDb.mimeTypeForFile(url.scheme().isEmpty() ? path : url.toLocalFile());
+    if (url.scheme() == QLatin1String("file") || !hasUriScheme(url))
+        return mimeDb.mimeTypeForFile(!hasUriScheme(url) ? path : url.toLocalFile());
     return mimeDb.mimeTypeForFile(url.fileName(), QMimeDatabase::MatchExtension);
 }
 
@@ -210,7 +211,7 @@ static bool isCacheableLocalPath(const QString &path)
     if (isTrashUri(path))
         return false;
     const QUrl url(path);
-    if (!url.scheme().isEmpty() && url.scheme() != QLatin1String("file"))
+    if (hasUriScheme(url) && url.scheme() != QLatin1String("file"))
         return false;
 
     static const QString cacheRoot =

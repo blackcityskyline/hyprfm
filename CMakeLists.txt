@@ -1,16 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 project(hyprfm VERSION 0.6.1 LANGUAGES CXX)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
+# Windows uses Win32 directly: no GLib, no D-Bus, nothing to ship beside Qt.
+if(NOT WIN32)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Svg Network Concurrent)
-find_package(KF6WindowSystem QUIET)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Svg Network Concurrent)
+if(NOT WIN32)
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+    find_package(KF6WindowSystem QUIET)
+endif()
+
+if(MSVC)
+    add_compile_options(/utf-8 /Zc:__cplusplus /permissive-)
+endif()
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+endif()
 
 add_subdirectory(src)
 

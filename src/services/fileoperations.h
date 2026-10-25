@@ -12,7 +12,7 @@
 #include <functional>
 
 class QThread;
-class GioTransferWorker;
+#include "services/transferworker.h"
 
 class FileOperations : public QObject
 {
@@ -143,7 +143,7 @@ private:
     struct ActiveTransfer {
         int id = 0;
         QThread *thread = nullptr;
-        GioTransferWorker *worker = nullptr;
+        TransferWorker *worker = nullptr;
         // Shared state for simple (external subprocess) operations: atomics
         // read/written by the GUI and worker threads without touching each
         // other's QObject instances.

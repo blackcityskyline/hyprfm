@@ -1,4 +1,5 @@
 #include "models/bookmarkmodel.h"
+#include "services/urischeme.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -9,7 +10,7 @@ namespace {
 bool isRemoteUri(const QString &path)
 {
     const QUrl url(path);
-    return url.isValid() && !url.scheme().isEmpty()
+    return url.isValid() && hasUriScheme(url)
         && url.scheme() != QStringLiteral("file")
         && url.scheme() != QStringLiteral("trash");
 }
@@ -211,7 +212,7 @@ BookmarkModel::Bookmark BookmarkModel::makeBookmark(const QString &rawPath) cons
 QString BookmarkModel::expandPath(const QString &path)
 {
     const QUrl url(path);
-    if (url.isValid() && !url.scheme().isEmpty() && url.scheme() != QStringLiteral("file"))
+    if (url.isValid() && hasUriScheme(url) && url.scheme() != QStringLiteral("file"))
         return url.toString(QUrl::FullyEncoded);
     if (path.startsWith("~/"))
         return QDir::homePath() + path.mid(1);
