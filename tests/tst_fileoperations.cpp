@@ -1006,6 +1006,40 @@ private slots:
         QDir(testPath).removeRecursively();
     }
 
+    // Deleting a folder must unlink a junction inside it, not empty its
+    // target: Qt does not count junctions as symlinks.
+    void testDeleteDoesNotFollowJunctions()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("NTFS junctions");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString victim = dir.filePath(QStringLiteral("victim"));
+        const QString doomed = dir.filePath(QStringLiteral("doomed"));
+        QVERIFY(QDir().mkpath(victim));
+        QVERIFY(QDir().mkpath(doomed));
+        {
+            QFile f(victim + QStringLiteral("/keep.txt"));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("keep");
+        }
+        QCOMPARE(QProcess::execute(QStringLiteral("cmd"),
+                                   {QStringLiteral("/c"), QStringLiteral("mklink"), QStringLiteral("/J"),
+                                    QDir::toNativeSeparators(doomed + QStringLiteral("/link")),
+                                    QDir::toNativeSeparators(victim)}),
+                 0);
+        QVERIFY(QFileInfo(doomed + QStringLiteral("/link")).isJunction());
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+        ops.deleteFiles({doomed});
+        QVERIFY(spy.wait(15000));
+        QVERIFY(!QFileInfo::exists(doomed));
+        QVERIFY(QFile::exists(victim + QStringLiteral("/keep.txt")));
+#endif
+    }
+
     // Recycle Bin read off disk ($R/$I files), the Windows side of XdgTrash.
     void testRecycleBinRoundTrip()
     {

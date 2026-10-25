@@ -1,4 +1,5 @@
 #include "services/fileoperations.h"
+#include "services/removetree.h"
 #include "services/urischeme.h"
 #include "services/archivepassword.h"
 #include "services/cloudmounts.h"
@@ -1508,7 +1509,7 @@ int FileOperations::deleteFiles(const QStringList &paths)
                     // removeRecursively() would empty the target.
                     bool removed = false;
                     if (info.isDir() && !info.isSymLink())
-                        removed = QDir(normalized).removeRecursively();
+                        removed = removeTree(normalized);
 #ifdef Q_OS_WIN
                     else if (info.isDir())   // a directory link is removed as a directory
                         removed = QDir().rmdir(normalized);
@@ -1867,7 +1868,7 @@ int FileOperations::emptyTrash()
                 const QFileInfo info(entry.filesPath);
                 bool removed = false;
                 if (info.isDir() && !info.isSymLink())
-                    removed = QDir(entry.filesPath).removeRecursively();
+                    removed = removeTree(entry.filesPath);
                 else
                     removed = QFile::remove(entry.filesPath);
 

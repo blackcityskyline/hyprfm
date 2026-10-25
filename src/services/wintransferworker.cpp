@@ -383,7 +383,7 @@ bool WinTransferWorker::removeTree(const QString &path, QString *error)
     const BOOL removed = (st.attrs & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(native.c_str())
                                                                : DeleteFileW(native.c_str());
     if (!removed) {
-        *error = tr("Copied, but could not remove %1: %2")
+        *error = tr("Could not remove %1: %2")
                      .arg(QDir::toNativeSeparators(path), errorText(GetLastError()));
         return false;
     }

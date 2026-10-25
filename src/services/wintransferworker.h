@@ -39,6 +39,9 @@ signals:
     void itemStarted(const QString &sourcePath, const QString &targetPath);
     void finished(bool success, const QString &error);
 
+    // Deletes a tree, unlinking (never entering) symlinks and junctions.
+    static bool removeTree(const QString &path, QString *error);
+
 private:
     bool transferOne(const TransferItem &item, bool moveOperation, QString *error);
     bool copyPath(const QString &source, const QString &target, bool overwrite, QString *error);
@@ -46,7 +49,6 @@ private:
     bool copyFile(const QString &source, const QString &target, bool overwrite, qint64 size,
                   QString *error);
     bool copyLink(const QString &source, const QString &target, QString *error);
-    bool removeTree(const QString &path, QString *error);
     qint64 scanBytes(const QString &path) const;
     void emitProgress(bool force = false);
     void waitWhilePaused();

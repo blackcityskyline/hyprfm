@@ -1,4 +1,5 @@
 #include "services/undomanager.h"
+#include "services/removetree.h"
 #include "services/xdgtrash.h"
 #include "services/fileoperations.h"
 
@@ -305,7 +306,7 @@ void UndoManager::executeUndo(const UndoRecord &rec)
 
     case UndoRecord::CreateFolder:
         for (const auto &p : rec.createdPaths)
-            QDir(p).removeRecursively();
+            removeTree(p);
         break;
 
     case UndoRecord::CreateFile:

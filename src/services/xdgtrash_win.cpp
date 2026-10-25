@@ -115,17 +115,28 @@ Entry readEntry(const QString &filesPath)
     std::memcpy(&version, data.constData(), 8);
     std::memcpy(&fileTime, data.constData() + 16, 8);
 
-    QString original;
-    if (version == 1 && data.size() >= 24 + 520) {
-        original = QString::fromWCharArray(reinterpret_cast<const wchar_t *>(data.constData() + 24));
+    // Both layouts are read with an explicit bound and cut at the first NUL:
+    // a $I file is user-writable data, so nothing may run past its end.
+    qsizetype offset = 0;
+    qsizetype maxChars = 0;
+    if (version == 1) {
+        offset = 24;
+        maxChars = 260;
     } else if (version == 2 && data.size() >= 28) {
         qint32 length = 0;
         std::memcpy(&length, data.constData() + 24, 4);
-        if (length > 0 && data.size() >= 28 + qint64(length) * 2)
-            original = QString::fromWCharArray(reinterpret_cast<const wchar_t *>(data.constData() + 28),
-                                               length - 1);
+        offset = 28;
+        maxChars = qMax(0, length);
     }
-    // fromWCharArray without a length stops at the first NUL.
+    maxChars = qMin(maxChars, (data.size() - offset) / 2);
+    QString original;
+    if (maxChars > 0) {
+        original = QString::fromUtf16(reinterpret_cast<const char16_t *>(data.constData() + offset),
+                                      maxChars);
+        const qsizetype nul = original.indexOf(QChar(u'\0'));
+        if (nul >= 0)
+            original.truncate(nul);
+    }
     if (!original.isEmpty()) {
         entry.originalPath = QDir::cleanPath(QDir::fromNativeSeparators(original));
         entry.name = QFileInfo(entry.originalPath).fileName();
