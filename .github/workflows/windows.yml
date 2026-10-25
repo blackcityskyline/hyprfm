@@ -43,6 +43,25 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --timeout 180 -j 2
 
+      # ctest swallows the output of these on Windows; run each one directly.
+      - name: Rerun failed tests
+        if: failure()
+        working-directory: build
+        shell: pwsh
+        run: |
+          $log = 'Testing/Temporary/LastTestsFailed.log'
+          if (-not (Test-Path $log)) { exit 0 }
+          foreach ($line in Get-Content $log) {
+            $name = ($line -split ':', 2)[1]
+            $exe = "tests/$name.exe"
+            if (-not (Test-Path $exe)) { continue }
+            "::group::$name"
+            $env:QT_QPA_PLATFORM = 'offscreen'
+            & $exe -o '-,txt' 2>&1 | Select-Object -Last 120
+            "exit code: $LASTEXITCODE"
+            "::endgroup::"
+          }
+
       - name: Package
         if: always() && hashFiles('build/src/hyprfm.exe') != ''
         shell: pwsh
