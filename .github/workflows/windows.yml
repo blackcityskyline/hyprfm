@@ -13,6 +13,8 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
 
     steps:
       - name: Checkout
@@ -31,17 +33,30 @@ jobs:
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
+      # Compiler cache kept between runs in the GitHub Actions cache, so a push
+      # that touches a few files only recompiles those.
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage"
+        # sccache cannot cache MSVC compiles that use a precompiled header, so
+        # PCH is off here; the unity build still batches the sources.
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DHYPRFM_ENABLE_PCH=OFF
+          -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage"
 
       # -k 0 keeps going past the first failure so one run reports every
       # compile error.
       - name: Build
-        run: cmake --build build -- -k 0
+        run: |
+          cmake --build build -- -k 0
+          sccache --show-stats
 
       - name: Test
         working-directory: build
-        run: ctest --output-on-failure --timeout 180 -j 2
+        run: ctest --output-on-failure --timeout 180 -j 4
 
       # ctest swallows the output of these on Windows; run each one directly.
       - name: Rerun failed tests
@@ -57,13 +72,20 @@ jobs:
             if (-not (Test-Path $exe)) { continue }
             "::group::$name"
             $env:QT_QPA_PLATFORM = 'offscreen'
-            & $exe -o "$name.txt,txt" *> "$name.stderr.txt"
+            & $exe -v1 -o "$name.txt,txt" *> "$name.stderr.txt"
             "exit code: $LASTEXITCODE"
             Get-Content "$name.txt" -ErrorAction SilentlyContinue |
               Select-String -Pattern '^(FAIL!|   Loc:|QFATAL|Totals)' -Context 0,2 | Select-Object -First 60
             Get-Content "$name.stderr.txt" -ErrorAction SilentlyContinue | Select-Object -First 20
             "::endgroup::"
           }
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/*.txt
 
       - name: Package
         if: always() && hashFiles('build/src/hyprfm.exe') != ''
