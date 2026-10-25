@@ -299,8 +299,10 @@ FocusScope {
         if (!config.singleClickOpensFolders || !isDir || mouse.button !== Qt.LeftButton
                 || (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
             return false
-        singleClickOpenedAt = Date.now()
         root.fileActivated(path, true)
+        // Stamp after the navigation work: a click queued behind a slow
+        // listing still counts as the leaked half of a double-click.
+        singleClickOpenedAt = Date.now()
         return true
     }
 
