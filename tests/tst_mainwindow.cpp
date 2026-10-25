@@ -45,61 +45,6 @@
 #include "services/themeloader.h"
 #include "services/undomanager.h"
 
-// ponytail: temporary, counts a QML signal by name for the Windows diagnostics.
-class EventLog : public QObject
-{
-public:
-    QString tag;
-    QStringList *out = nullptr;
-    bool eventFilter(QObject *obj, QEvent *e) override
-    {
-        switch (e->type()) {
-        case QEvent::MouseButtonPress:
-        case QEvent::MouseButtonRelease:
-        case QEvent::MouseButtonDblClick:
-        case QEvent::UngrabMouse: {
-            QString t = QString::number(int(e->type()));
-            if (e->type() != QEvent::UngrabMouse) {
-                auto *me = static_cast<QMouseEvent *>(e);
-                t += QStringLiteral("m%1").arg(int(me->modifiers()), 0, 16);
-            }
-            QString who;
-            if (tag == QLatin1String("A")) {
-                if (!qobject_cast<QQuickItem *>(obj) || e->type() == QEvent::UngrabMouse)
-                    return false;
-                who = QString::fromLatin1(obj->metaObject()->className()).left(40);
-                if (e->type() == QEvent::MouseButtonPress && who == QLatin1String("QQuickMouseArea")) {
-                    for (QObject *o = obj; o; o = o->parent()) {
-                        auto *it = qobject_cast<QQuickItem *>(o);
-                        QQmlContext *ctx = qmlContext(o);
-                        who += QStringLiteral(" < %1@%2").arg(QString::fromLatin1(o->metaObject()->className()).left(30),
-                                                            ctx ? ctx->baseUrl().fileName() : QString());
-                        if (it)
-                            who += QStringLiteral("[%1x%2 z%3]").arg(it->width()).arg(it->height()).arg(it->z());
-                        if (who.size() > 600)
-                            break;
-                    }
-                }
-            }
-            *out << tag + t + who;
-            break;
-        }
-        default:
-            break;
-        }
-        return false;
-    }
-};
-
-class Counter : public QObject
-{
-    Q_OBJECT
-public:
-    int n = 0;
-public slots:
-    void count() { ++n; }
-};
-
 class TestMainWindow : public QObject
 {
     Q_OBJECT
@@ -1012,104 +957,10 @@ private slots:
         QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
         QCOMPARE(app.tabModel->activeTab()->currentPath(), root);
 
-        // Every path the tab visits, so a failure shows whether it went into
-        // "a" and straight back out or never moved.
-        QStringList visited;
-        auto *tab = app.tabModel->activeTab();
-        connect(tab, &TabModel::currentPathChanged, this,
-                [&] { visited << tab->currentPath(); });
-        // ponytail: temporary Windows diagnostics, remove once this passes there.
-        Counter activationCounter;
-        QStringList chain;
-        for (QQuickItem *it = tile; it; it = it->parentItem()) {
-            const QVariant fp = it->property("filePath");
-            chain << QStringLiteral("%1[%2,%3 %4x%5%6]")
-                         .arg(QString::fromLatin1(it->metaObject()->className()))
-                         .arg(it->x()).arg(it->y()).arg(it->width()).arg(it->height())
-                         .arg(fp.isValid() ? QStringLiteral(" ") + fp.toString() : QString());
-            if (chain.size() > 6)
-                break;
-        }
-        QObject *view = tile->parentItem() ? tile->parentItem()->parentItem() : nullptr;
-        int activations = 0;
-        if (view)
-            connect(view, SIGNAL(fileActivated(QString,bool)), &activationCounter, SLOT(count()));
-        activationCounter.n = 0;
-        auto *cfg = app.engine.rootContext()->contextProperty("config").value<QObject *>();
-        const QString selAfterCtrl = view ? view->property("selectedIndices").toString()
-                                          + QString::number(view->property("selectedIndices").toList().size())
-                                          : QStringLiteral("?");
         QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
-        QTest::qWait(1000);
-        activations = activationCounter.n;
-        const QString diag = QStringLiteral("singleClick=%1 selAfterCtrl=%2 selAfterDbl=%3 activations=%4 dblInterval=%5 point %6,%7 chain %8")
-                                 .arg(cfg ? cfg->property("singleClickOpensFolders").toString() : QStringLiteral("?"))
-                                 .arg(selAfterCtrl)
-                                 .arg(view ? view->property("selectedIndices").toList().size() : -1)
-                                 .arg(activations)
-                                 .arg(QGuiApplication::styleHints()->mouseDoubleClickInterval())
-                                 .arg(a.x()).arg(a.y()).arg(chain.join(QStringLiteral(" < ")));
-        QTRY_VERIFY2(tab->currentPath() == root + "/a",
-                     qPrintable(visited.join(" -> ") + QStringLiteral(" | ") + diag));
+        QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), root + "/a");
         QTest::qWait(300);
-        QVERIFY2(tab->currentPath() == root + "/a", qPrintable(visited.join(" -> ")));
-    }
-
-    // ponytail: temporary probe for the Windows single-click failure.
-    void probeSingleClick()
-    {
-        QStringList out;
-        for (int mode = 0; mode < 3; ++mode) {
-            App app;
-            const QString configDir = app.home.path() + "/.config/hyprfm";
-            QDir().mkpath(configDir);
-            {
-                QFile f(configDir + "/config.toml");
-                QVERIFY(f.open(QIODevice::WriteOnly));
-                f.write("[general]\nsingle_click_opens_folders = true\n");
-            }
-            QVERIFY(app.load());
-            const QString root = app.home.path() + "/root";
-            QVERIFY(QDir().mkpath(root + "/a/b"));
-            QObject *main = app.window->contentItem()->parent();
-            QVERIFY(QMetaObject::invokeMethod(main, "navigateActivePaneTo", Q_ARG(QVariant, root)));
-            QTRY_VERIFY(App::findText(app.window->contentItem(), QStringLiteral("a")));
-            QQuickItem *tile = App::findText(app.window->contentItem(), QStringLiteral("a"))->parentItem();
-            QTRY_VERIFY(tile->isVisible() && tile->width() > 0);
-            const QPoint a = app.center(tile);
-            Counter c;
-            connect(tile->parentItem()->parentItem(), SIGNAL(fileActivated(QString,bool)), &c, SLOT(count()));
-            QStringList events;
-            EventLog winLog, maLog;
-            winLog.tag = QStringLiteral("W");
-            maLog.tag = QStringLiteral("M");
-            winLog.out = maLog.out = &events;
-            app.window->installEventFilter(&winLog);
-            QQuickItem *ma = nullptr;
-            for (QQuickItem *child : tile->childItems())
-                if (QByteArray(child->metaObject()->className()).contains("MouseArea"))
-                    ma = child;
-            if (ma)
-                ma->installEventFilter(&maLog);
-            if (mode == 2) {
-                QTest::mouseClick(app.window, Qt::LeftButton, Qt::ControlModifier, a);
-                QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
-                events << QStringLiteral("|");
-            }
-            EventLog appLog;
-            appLog.tag = QStringLiteral("A");
-            appLog.out = &events;
-            qApp->installEventFilter(&appLog);
-            if (mode == 1)
-                QTest::mouseDClick(app.window, Qt::LeftButton, {}, a);
-            else
-                QTest::mouseClick(app.window, Qt::LeftButton, {}, a);
-            QTest::qWait(500);
-            qApp->removeEventFilter(&appLog);
-            out << QStringLiteral("%1:%2[%3%4]").arg(QStringList{"click", "dclick", "ctrl+click"}[mode]).arg(c.n)
-                       .arg(ma ? QString() : QStringLiteral("noMA ")).arg(events.join(QLatin1Char(',')));
-        }
-        QSKIP(qPrintable(QStringLiteral("probe ") + out.join(QLatin1Char(' '))));
+        QCOMPARE(app.tabModel->activeTab()->currentPath(), root + "/a");
     }
 
     // Activating a program asks how to run it instead of handing it to
