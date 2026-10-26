@@ -1,0 +1,47 @@
+name: Windows showcase
+
+# Screenshots and clips of the packaged Windows build, for looking at the UI
+# without a Windows PC. Reuses the newest green "Windows" build instead of
+# compiling again.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - windows-port
+    paths:
+      - .github/workflows/windows-showcase.yml
+      - scripts/windows-showcase/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  showcase:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch latest Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $id = gh run list -R $env:GITHUB_REPOSITORY -w windows.yml -b windows-port -s success -L 1 --json databaseId -q '.[0].databaseId'
+          "Using build run $id"
+          gh run download $id -R $env:GITHUB_REPOSITORY -n hyprfm-windows-x64 -D app
+          Get-Item app/bin/hyprfm.exe
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress | Select-Object -Last 2
+
+      - name: Record
+        run: ./scripts/windows-showcase/showcase.ps1 -Exe app/bin/hyprfm.exe -Out showcase
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-showcase
+          path: showcase
