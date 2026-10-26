@@ -5,6 +5,7 @@
 #include <QTemporaryDir>
 
 #include "models/filesystemmodel.h"
+#include "services/fileoperations.h"
 #include "services/remoteaccessservice.h"
 #include "services/sftpsession.h"
 
@@ -237,6 +238,69 @@ private slots:
         setup.removeFile(dir + "/hello.txt", &error);
         setup.removeDir(dir + "/sub", &error);
         setup.removeDir(dir, &error);
+    }
+
+    // FileOperations on sftp:// through the session the previous test left
+    // in the pool: upload a folder, rename, new folder, download with a
+    // move, delete the rest.
+    void testFileOperationsOnServer()
+    {
+        QString error;
+        SftpSession setup;
+        QVERIFY2(open(setup, &error), qPrintable(error));
+        const QString home = setup.homePath(&error);
+        const QString base = QStringLiteral("sftp://%1@%2%3").arg(m_user, m_host, home);
+        QVERIFY2(SftpPool::instance().find(QUrl(base)), "testConnectThenBrowse must log in first");
+
+        QTemporaryDir local;
+        QDir(local.path()).mkpath("pack/inner");
+        QFile a(local.path() + "/pack/a.txt");
+        QVERIFY(a.open(QIODevice::WriteOnly));
+        a.write("alpha");
+        a.close();
+        QFile b(local.path() + "/pack/inner/b.txt");
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        b.write(QByteArray(200000, 'b'));
+        b.close();
+
+        FileOperations ops;
+        QSignalSpy finished(&ops, &FileOperations::operationFinished);
+        const auto waitOk = [&] {
+            QTRY_VERIFY_WITH_TIMEOUT(finished.count() > 0, 30000);
+            const QList<QVariant> args = finished.takeFirst();
+            QVERIFY2(args.at(0).toBool(), qPrintable(args.at(1).toString()));
+        };
+
+        const QString remoteDir = home + "/pack";
+        SftpFs::removeTree(base + "/pack", &error);
+        SftpFs::removeTree(base + "/pack2", &error);
+        error.clear();
+
+        QVERIFY(ops.copyFiles({local.path() + "/pack"}, base) >= 0);
+        waitOk();
+        SftpSession::Entry info;
+        QVERIFY2(setup.stat(remoteDir + "/inner/b.txt", &info, &error), qPrintable(error));
+        QCOMPARE(info.size, qint64(200000));
+
+        QVERIFY(ops.rename(base + "/pack", "pack2"));
+        QVERIFY(!setup.stat(remoteDir, &info, &error));
+        ops.createFolder(base + "/pack2", "made");
+        QVERIFY2(setup.stat(home + "/pack2/made", &info, &error) && info.isDir, qPrintable(error));
+
+        QTemporaryDir back;
+        QVERIFY(ops.moveFiles({base + "/pack2"}, back.path()) >= 0);
+        waitOk();
+        QFile got(back.path() + "/pack2/inner/b.txt");
+        QVERIFY(got.open(QIODevice::ReadOnly));
+        QCOMPARE(got.size(), qint64(200000));
+        QVERIFY(QFileInfo(back.path() + "/pack2/made").isDir());
+        QVERIFY2(!setup.stat(home + "/pack2", &info, &error), "move left the source behind");
+
+        QVERIFY(ops.copyFiles({back.path() + "/pack2"}, base) >= 0);
+        waitOk();
+        QVERIFY(ops.deleteFiles({base + "/pack2"}) >= 0);
+        waitOk();
+        QVERIFY(!setup.stat(home + "/pack2", &info, &error));
     }
 };
 

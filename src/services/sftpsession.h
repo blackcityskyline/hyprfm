@@ -66,12 +66,15 @@ public:
 
     QString homePath(QString *error);
     QList<Entry> list(const QString &path, QString *error);
-    bool stat(const QString &path, Entry *entry, QString *error);
+    // followLinks false: a link is reported as itself (isSymLink).
+    bool stat(const QString &path, Entry *entry, QString *error, bool followLinks = true);
     bool download(const QString &remote, const QString &local, const Progress &progress,
                   QString *error);
     bool upload(const QString &local, const QString &remote, const Progress &progress,
                 QString *error);
     bool makeDir(const QString &path, QString *error);
+    // Fails if something already has that name.
+    bool createEmptyFile(const QString &path, QString *error);
     bool removeFile(const QString &path, QString *error);
     bool removeDir(const QString &path, QString *error);
     bool rename(const QString &from, const QString &to, QString *error);
@@ -123,3 +126,26 @@ private:
     mutable QMutex m_mutex;
     QHash<QString, std::shared_ptr<Slot>> m_slots;
 };
+
+// File operations on sftp:// URIs through the pool, for FileOperations and
+// the transfer worker. Each call takes the session's lock for its duration;
+// without a logged-in session they fail with "not connected".
+namespace SftpFs {
+
+bool isSftp(const QString &location);
+bool makeDir(const QString &uri, QString *error);
+bool createEmptyFile(const QString &uri, QString *error);
+// Same server only; the transfer worker handles moves between servers.
+bool rename(const QString &fromUri, const QString &toUri, QString *error);
+// Deletes a file or a whole folder; links are removed, never followed.
+bool removeTree(const QString &uri, QString *error);
+bool exists(const QString &uri);
+// Total bytes under a file or folder, for progress.
+qint64 treeSize(const QString &uri);
+// Files and folders, recursively. `progress` gets bytes of the current file.
+bool download(const QString &uri, const QString &localPath, const SftpSession::Progress &progress,
+              QString *error);
+bool upload(const QString &localPath, const QString &uri, const SftpSession::Progress &progress,
+            QString *error);
+
+} // namespace SftpFs

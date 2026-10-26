@@ -44,6 +44,7 @@ signals:
 
 private:
     bool transferOne(const TransferItem &item, bool moveOperation, QString *error);
+    bool transferRemote(const TransferItem &item, bool moveOperation, QString *error);
     bool copyPath(const QString &source, const QString &target, bool overwrite, QString *error);
     bool copyTree(const QString &source, const QString &target, QString *error);
     bool copyFile(const QString &source, const QString &target, bool overwrite, qint64 size,

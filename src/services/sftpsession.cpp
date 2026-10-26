@@ -421,11 +421,12 @@ QList<SftpSession::Entry> SftpSession::list(const QString &path, QString *error)
     return entries;
 }
 
-bool SftpSession::stat(const QString &path, Entry *entry, QString *error)
+bool SftpSession::stat(const QString &path, Entry *entry, QString *error, bool followLinks)
 {
     const QByteArray p = utf8(path);
     LIBSSH2_SFTP_ATTRIBUTES attrs;
-    if (libssh2_sftp_stat_ex(m_sftp, p.constData(), unsigned(p.size()), LIBSSH2_SFTP_STAT, &attrs) != 0) {
+    if (libssh2_sftp_stat_ex(m_sftp, p.constData(), unsigned(p.size()),
+                             followLinks ? LIBSSH2_SFTP_STAT : LIBSSH2_SFTP_LSTAT, &attrs) != 0) {
         *error = sftpError(path);
         return false;
     }
@@ -543,6 +544,22 @@ bool SftpSession::makeDir(const QString &path, QString *error)
     return true;
 }
 
+bool SftpSession::createEmptyFile(const QString &path, QString *error)
+{
+    const QByteArray p = utf8(path);
+    LIBSSH2_SFTP_HANDLE *out = libssh2_sftp_open_ex(
+        m_sftp, p.constData(), unsigned(p.size()),
+        LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_EXCL,
+        LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH,
+        LIBSSH2_SFTP_OPENFILE);
+    if (!out) {
+        *error = sftpError(path);
+        return false;
+    }
+    libssh2_sftp_close(out);
+    return true;
+}
+
 bool SftpSession::removeFile(const QString &path, QString *error)
 {
     const QByteArray p = utf8(path);
@@ -619,3 +636,197 @@ void SftpPool::drop(const QUrl &url)
     QMutexLocker lock(&m_mutex);
     m_slots.remove(keyFor(url));
 }
+
+namespace SftpFs {
+
+namespace {
+
+QString pathOf(const QUrl &url)
+{
+    return url.path().isEmpty() ? QStringLiteral("/") : url.path();
+}
+
+QString childPath(const QString &dir, const QString &name)
+{
+    return dir.endsWith(QLatin1Char('/')) ? dir + name : dir + QLatin1Char('/') + name;
+}
+
+// Runs `work` on the logged-in session for `url`, under its lock. A broken
+// connection is dropped from the pool so the next visit logs in again.
+bool withSession(const QUrl &url, const std::function<bool(SftpSession &, QString *)> &work,
+                 QString *error)
+{
+    const auto slot = SftpPool::instance().find(url);
+    if (!slot) {
+        *error = QStringLiteral("Not connected to %1; open it again to log in").arg(url.host());
+        return false;
+    }
+    QMutexLocker lock(&slot->mutex);
+    if (work(*slot->session, error))
+        return true;
+    if (slot->session->isBroken())
+        SftpPool::instance().drop(url);
+    return false;
+}
+
+bool removeDirIn(SftpSession &s, const QString &path, QString *error)
+{
+    const QList<SftpSession::Entry> entries = s.list(path, error);
+    if (!error->isEmpty())
+        return false;
+    for (const SftpSession::Entry &e : entries) {
+        const QString child = childPath(path, e.name);
+        const bool ok = e.isSymLink || !e.isDir ? s.removeFile(child, error)
+                                                : removeDirIn(s, child, error);
+        if (!ok)
+            return false;
+    }
+    return s.removeDir(path, error);
+}
+
+bool removeTreeIn(SftpSession &s, const QString &path, QString *error)
+{
+    SftpSession::Entry info;
+    if (!s.stat(path, &info, error, false))
+        return false;
+    if (info.isSymLink || !info.isDir)
+        return s.removeFile(path, error);
+    return removeDirIn(s, path, error);
+}
+
+qint64 treeSizeIn(SftpSession &s, const QString &path)
+{
+    SftpSession::Entry info;
+    QString error;
+    if (!s.stat(path, &info, &error))
+        return 0;
+    if (!info.isDir)
+        return info.size;
+    qint64 total = 0;
+    for (const SftpSession::Entry &e : s.list(path, &error))
+        total += e.isSymLink ? 0 : e.isDir ? treeSizeIn(s, childPath(path, e.name)) : e.size;
+    return total;
+}
+
+bool downloadIn(SftpSession &s, const QString &path, const QString &local,
+                const SftpSession::Progress &progress, QString *error)
+{
+    SftpSession::Entry info;
+    if (!s.stat(path, &info, error))
+        return false;
+    if (!info.isDir)
+        return s.download(path, local, progress, error);
+    if (!QDir().mkpath(local)) {
+        *error = QStringLiteral("Could not create %1").arg(QDir::toNativeSeparators(local));
+        return false;
+    }
+    const QList<SftpSession::Entry> entries = s.list(path, error);
+    if (!error->isEmpty())
+        return false;
+    for (const SftpSession::Entry &e : entries) {
+        if (e.isSymLink && e.isDir)
+            continue;   // never follow folder links out of the tree
+        if (!downloadIn(s, childPath(path, e.name), local + QLatin1Char('/') + e.name, progress, error))
+            return false;
+    }
+    return true;
+}
+
+bool uploadIn(SftpSession &s, const QString &local, const QString &path,
+              const SftpSession::Progress &progress, QString *error)
+{
+    const QFileInfo info(local);
+    if (info.isSymLink() || info.isJunction())
+        return true;   // never follow links out of the tree
+    if (!info.isDir())
+        return s.upload(local, path, progress, error);
+    SftpSession::Entry existing;
+    QString ignored;
+    if (!s.stat(path, &existing, &ignored) && !s.makeDir(path, error))
+        return false;
+    const QFileInfoList children =
+        QDir(local).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+    for (const QFileInfo &child : children) {
+        if (!uploadIn(s, child.absoluteFilePath(), childPath(path, child.fileName()), progress, error))
+            return false;
+    }
+    return true;
+}
+
+} // namespace
+
+bool isSftp(const QString &location)
+{
+    return location.startsWith(QLatin1String("sftp://"), Qt::CaseInsensitive);
+}
+
+bool makeDir(const QString &uri, QString *error)
+{
+    const QUrl url(uri);
+    return withSession(url, [&](SftpSession &s, QString *e) { return s.makeDir(pathOf(url), e); }, error);
+}
+
+bool createEmptyFile(const QString &uri, QString *error)
+{
+    const QUrl url(uri);
+    return withSession(url, [&](SftpSession &s, QString *e) { return s.createEmptyFile(pathOf(url), e); },
+                       error);
+}
+
+bool rename(const QString &fromUri, const QString &toUri, QString *error)
+{
+    const QUrl from(fromUri);
+    const QUrl to(toUri);
+    if (SftpPool::keyFor(from) != SftpPool::keyFor(to)) {
+        *error = QStringLiteral("Rename works within one server only");
+        return false;
+    }
+    return withSession(from, [&](SftpSession &s, QString *e) { return s.rename(pathOf(from), pathOf(to), e); },
+                       error);
+}
+
+bool removeTree(const QString &uri, QString *error)
+{
+    const QUrl url(uri);
+    return withSession(url, [&](SftpSession &s, QString *e) { return removeTreeIn(s, pathOf(url), e); }, error);
+}
+
+bool exists(const QString &uri)
+{
+    const QUrl url(uri);
+    QString error;
+    return withSession(url, [&](SftpSession &s, QString *e) {
+        SftpSession::Entry info;
+        return s.stat(pathOf(url), &info, e);
+    }, &error);
+}
+
+qint64 treeSize(const QString &uri)
+{
+    const QUrl url(uri);
+    qint64 total = 0;
+    QString error;
+    withSession(url, [&](SftpSession &s, QString *) { total = treeSizeIn(s, pathOf(url)); return true; },
+                &error);
+    return total;
+}
+
+bool download(const QString &uri, const QString &localPath, const SftpSession::Progress &progress,
+              QString *error)
+{
+    const QUrl url(uri);
+    return withSession(url, [&](SftpSession &s, QString *e) {
+        return downloadIn(s, pathOf(url), localPath, progress, e);
+    }, error);
+}
+
+bool upload(const QString &localPath, const QString &uri, const SftpSession::Progress &progress,
+            QString *error)
+{
+    const QUrl url(uri);
+    return withSession(url, [&](SftpSession &s, QString *e) {
+        return uploadIn(s, localPath, pathOf(url), progress, e);
+    }, error);
+}
+
+} // namespace SftpFs

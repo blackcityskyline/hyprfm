@@ -6,6 +6,7 @@
 #ifdef Q_OS_WIN
 #include "services/winshell.h"
 #include <windows.h>
+#include "services/sftpsession.h"
 #include "services/wintransferworker.h"
 #else
 #include "services/giotransferworker.h"
@@ -594,9 +595,13 @@ bool moveLocationSync(const QString &sourcePath, const QString &targetPath, QStr
     }
 
 #ifdef Q_OS_WIN
-    if (error)
-        *error = QStringLiteral("Remote locations are not supported on Windows");
-    return false;
+    QString err;
+    const bool ok = SftpFs::isSftp(normalizedSource) && SftpFs::isSftp(normalizedTarget)
+        ? SftpFs::rename(normalizedSource, normalizedTarget, &err)
+        : (err = QStringLiteral("Only SFTP locations are supported on Windows"), false);
+    if (!ok && error)
+        *error = err;
+    return ok;
 #else
     GFile *src = gFileForLocation(normalizedSource);
     GFile *dst = gFileForLocation(normalizedTarget);
@@ -622,9 +627,13 @@ bool makeDirectorySync(const QString &path, QString *error = nullptr)
     }
 
 #ifdef Q_OS_WIN
-    if (error)
-        *error = QStringLiteral("Remote locations are not supported on Windows");
-    return false;
+    QString err;
+    const bool ok = SftpFs::isSftp(normalized)
+        ? SftpFs::exists(normalized) || SftpFs::makeDir(normalized, &err)
+        : (err = QStringLiteral("Only SFTP locations are supported on Windows"), false);
+    if (!ok && error)
+        *error = err;
+    return ok;
 #else
     GFile *file = gFileForLocation(normalized);
     GError *gErr = nullptr;
@@ -654,9 +663,13 @@ bool createEmptyFileSync(const QString &path, QString *error = nullptr)
     }
 
 #ifdef Q_OS_WIN
-    if (error)
-        *error = QStringLiteral("Remote locations are not supported on Windows");
-    return false;
+    QString err;
+    const bool ok = SftpFs::isSftp(normalized)
+        ? SftpFs::createEmptyFile(normalized, &err)
+        : (err = QStringLiteral("Only SFTP locations are supported on Windows"), false);
+    if (!ok && error)
+        *error = err;
+    return ok;
 #else
     GFile *file = gFileForLocation(normalized);
     GError *gErr = nullptr;
@@ -1618,7 +1631,11 @@ int FileOperations::deleteFiles(const QStringList &paths)
 
                 if (isUriPath(normalized)) {
 #ifdef Q_OS_WIN
-                    lastError = QStringLiteral("Remote locations are not supported on Windows");
+                    QString err;
+                    if (!SftpFs::isSftp(normalized))
+                        lastError = QStringLiteral("Only SFTP locations are supported on Windows");
+                    else if (!SftpFs::removeTree(normalized, &err))
+                        lastError = err;
 #else
                     GFile *file = gFileForLocation(normalized);
                     QString err;

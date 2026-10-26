@@ -1,5 +1,6 @@
 #include "services/wintransferworker.h"
 #include "services/transferprogress.h"
+#include "services/sftpsession.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -211,8 +212,80 @@ unsigned long WinTransferWorker::onCopyProgress(qint64 itemBytesDone)
     return PROGRESS_CONTINUE;
 }
 
+// Copies and moves where either side is an sftp:// location, through the
+// logged-in session pool. Overwriting a remote file replaces it outright:
+// ponytail: no backup on the server, so undo cannot bring the old one back.
+bool WinTransferWorker::transferRemote(const TransferItem &item, bool moveOperation, QString *error)
+{
+    const bool fromRemote = SftpFs::isSftp(item.sourcePath);
+    const bool toRemote = SftpFs::isSftp(item.targetPath);
+    const auto sameServer = [&] {
+        return fromRemote && toRemote
+            && SftpPool::keyFor(QUrl(item.sourcePath)) == SftpPool::keyFor(QUrl(item.targetPath));
+    };
+
+    if (toRemote && item.overwrite && SftpFs::exists(item.targetPath)
+        && !SftpFs::removeTree(item.targetPath, error))
+        return false;
+    if (!toRemote && item.overwrite && QFileInfo::exists(item.targetPath)
+        && !removeTree(item.targetPath, error))
+        return false;
+
+    if (moveOperation && sameServer()) {
+        if (!SftpFs::rename(item.sourcePath, item.targetPath, error))
+            return false;
+        m_completedBytes += 1;
+        emitProgress();
+        return true;
+    }
+    if (moveOperation)
+        m_totalBytes += scanBytes(item.sourcePath);
+
+    // Per-file byte counts from the session, summed across a whole tree.
+    qint64 base = 0;
+    qint64 last = 0;
+    const SftpSession::Progress progress = [&](qint64 done) {
+        if (done < last)
+            base += last;
+        last = done;
+        m_currentItemBytes = base + done;
+        emitProgress();
+        waitWhilePaused();
+        return !m_cancelled.load();
+    };
+
+    bool ok;
+    if (fromRemote && toRemote) {
+        // Between servers (or a copy on one): through a local temporary copy.
+        const QString temp = QDir::tempPath() + QStringLiteral("/hyprfm-sftp-")
+            + QString::number(QDateTime::currentMSecsSinceEpoch());
+        ok = SftpFs::download(item.sourcePath, temp, progress, error)
+            && SftpFs::upload(temp, item.targetPath, {}, error);
+        QString ignored;
+        removeTree(temp, &ignored);
+    } else if (toRemote) {
+        ok = SftpFs::upload(item.sourcePath, item.targetPath, progress, error);
+    } else {
+        QDir().mkpath(QFileInfo(item.targetPath).absolutePath());
+        ok = SftpFs::download(item.sourcePath, item.targetPath, progress, error);
+    }
+    m_completedBytes += base + last;
+    m_currentItemBytes = 0;
+    if (!ok)
+        return false;
+    emitProgress();
+
+    // Delete the source only once everything arrived.
+    if (moveOperation)
+        return fromRemote ? SftpFs::removeTree(item.sourcePath, error) : removeTree(item.sourcePath, error);
+    return true;
+}
+
 bool WinTransferWorker::transferOne(const TransferItem &item, bool moveOperation, QString *error)
 {
+    if (SftpFs::isSftp(item.sourcePath) || SftpFs::isSftp(item.targetPath))
+        return transferRemote(item, moveOperation, error);
+
     const QString targetParent = QFileInfo(item.targetPath).absolutePath();
     if (!QFileInfo::exists(targetParent))
         QDir().mkpath(targetParent);
@@ -392,6 +465,8 @@ bool WinTransferWorker::removeTree(const QString &path, QString *error)
 
 qint64 WinTransferWorker::scanBytes(const QString &path) const
 {
+    if (SftpFs::isSftp(path))
+        return qMax<qint64>(SftpFs::treeSize(path), 1);
     const Stat st = statNoFollow(path);
     if (!st.ok || isLink(st.attrs, st.tag))
         return 1;
