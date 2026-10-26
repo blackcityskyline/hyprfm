@@ -5,6 +5,7 @@
 #include <QQuickStyle>
 #include <QStandardPaths>
 #include <QDir>
+#include <cstdlib>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -620,6 +621,15 @@ static bool desktopPrefersLight()
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    // 7-Zip's installer leaves PATH alone; put it there so every "7z" lookup
+    // (archives, previews, the Tools list) finds it. _wputenv_s updates both
+    // the CRT copy Qt reads and the block child processes inherit.
+    const QString sevenZip = QDir::toNativeSeparators(qEnvironmentVariable("ProgramFiles")
+                                                      + QStringLiteral("/7-Zip"));
+    if (QFileInfo::exists(sevenZip + QStringLiteral("\\7z.exe")))
+        _wputenv_s(L"PATH", (sevenZip + u';' + qEnvironmentVariable("PATH")).toStdWString().c_str());
+#endif
     for (int i = 1; i < argc; ++i) {
         const QLatin1StringView a(argv[i]);
         if (a == "-h" || a == "--help") {
