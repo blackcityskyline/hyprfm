@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QImage>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 
@@ -23,6 +25,11 @@ void openWithDialog(const QString &path);
 
 // Sets the desktop wallpaper (all monitors). Returns an error, empty on success.
 QString setWallpaper(const QString &path);
+
+// The thumbnail Explorer shows for a file (video frame, PDF page, ...), at
+// most `size`; null when no thumbnail handler covers the type. Safe to call
+// from worker threads.
+QImage shellThumbnail(const QString &path, const QSize &size);
 
 // Native folder picker; empty when cancelled.
 QString pickFolder(const QString &title, const QString &startFolder, const QString &okLabel);

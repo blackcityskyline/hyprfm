@@ -107,6 +107,23 @@ QString ejectVolume(const QString &root)
     return error;
 }
 
+QImage shellThumbnail(const QString &path, const QSize &size)
+{
+    ComScope com;
+    ComPtr<IShellItemImageFactory> factory;
+    if (FAILED(SHCreateItemFromParsingName(nativePath(path).c_str(), nullptr,
+                                           IID_PPV_ARGS(factory.out()))))
+        return {};
+    HBITMAP bitmap = nullptr;
+    // THUMBNAILONLY: no generic file-type icon when there is no handler, so
+    // the caller can fall back to its own icon.
+    if (FAILED(factory->GetImage({size.width(), size.height()}, SIIGBF_THUMBNAILONLY, &bitmap)))
+        return {};
+    QImage image = QImage::fromHBITMAP(bitmap);
+    DeleteObject(bitmap);
+    return image;
+}
+
 void openWithDialog(const QString &path)
 {
     const std::wstring file = nativePath(path);

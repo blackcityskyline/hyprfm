@@ -1,5 +1,8 @@
 #include "thumbnailprovider.h"
 #include "services/urischeme.h"
+#ifdef Q_OS_WIN
+#include "services/winshell.h"
+#endif
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -339,6 +342,13 @@ void ThumbnailResponse::generateImageThumbnail()
 void ThumbnailResponse::generateVideoThumbnail()
 {
     QSize targetSize = m_requestedSize.isValid() ? m_requestedSize : QSize(80, 80);
+
+#ifdef Q_OS_WIN
+    // Explorer's own video thumbnail (Media Foundation), no ffmpeg needed.
+    m_image = WinShell::shellThumbnail(m_id, targetSize);
+    if (!m_image.isNull())
+        return;
+#endif
 
     QTemporaryFile tmpFile;
     tmpFile.setFileTemplate(tmpFile.fileTemplate() + ".png");
