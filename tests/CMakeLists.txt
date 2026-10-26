@@ -23,7 +23,14 @@ add_test(NAME tst_bookmarkmodel COMMAND tst_bookmarkmodel)
 
 add_executable(tst_fileoperations tst_fileoperations.cpp)
 target_link_libraries(tst_fileoperations PRIVATE hyprfm_core Qt6::Test Qt6::Core Qt6::Gui)
-add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
+# ctest on Windows loses the QtTest output of a failed run, and the CI
+# rerun can pass; keep the first run's log (uploaded with test-logs).
+if(WIN32)
+    add_test(NAME tst_fileoperations COMMAND tst_fileoperations
+        -o ${CMAKE_BINARY_DIR}/tst_fileoperations.ctest.txt,txt -o -,txt)
+else()
+    add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
+endif()
 # Shares gio trash state with tst_giotransferworker; serialize to avoid flakes.
 set_tests_properties(tst_fileoperations PROPERTIES
     RUN_SERIAL TRUE
