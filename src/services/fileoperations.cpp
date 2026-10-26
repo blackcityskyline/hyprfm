@@ -398,7 +398,9 @@ QString parentLocation(const QString &path)
 
 #ifdef Q_OS_WIN
     // "//server/share" is a root like "C:/"; "//server" alone cannot be listed.
-    if (QDir(normalized).isRoot())
+    // (QDir::isRoot() says no for it.)
+    if (normalized.startsWith(QLatin1String("//"))
+        && normalized.mid(2).count(QLatin1Char('/')) <= 1)
         return normalized;
 #endif
     const QFileInfo info(normalized);
