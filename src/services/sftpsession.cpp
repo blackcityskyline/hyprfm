@@ -663,6 +663,7 @@ bool withSession(const QUrl &url, const std::function<bool(SftpSession &, QStrin
         return false;
     }
     QMutexLocker lock(&slot->mutex);
+    error->clear();   // the tree walks read a non-empty error as "list() failed"
     if (work(*slot->session, error))
         return true;
     if (slot->session->isBroken())

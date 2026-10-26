@@ -190,6 +190,8 @@ add_test(NAME tst_recentfilesmodel COMMAND tst_recentfilesmodel)
 if(WIN32)
 add_executable(tst_sftpsession tst_sftpsession.cpp)
 target_link_libraries(tst_sftpsession PRIVATE hyprfm_core Qt6::Test Qt6::Core)
-add_test(NAME tst_sftpsession COMMAND tst_sftpsession)
+# The rerun meets what the first run left on the server; keep the first log.
+add_test(NAME tst_sftpsession COMMAND tst_sftpsession
+    -o ${CMAKE_BINARY_DIR}/tst_sftpsession.ctest.txt,txt -o -,txt)
 set_tests_properties(tst_sftpsession PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

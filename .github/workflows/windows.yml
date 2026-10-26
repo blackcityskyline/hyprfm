@@ -99,6 +99,9 @@ jobs:
             $env:QT_QPA_PLATFORM = 'offscreen'
             & $exe -v1 -o "$name.txt,txt" *> "$name.stderr.txt"
             "exit code: $LASTEXITCODE"
+            Get-Content "$name.ctest.txt" -ErrorAction SilentlyContinue |
+              Select-String -Pattern '^(FAIL!|   Loc:|QFATAL|Totals)' -Context 0,2 | Select-Object -First 30 |
+              ForEach-Object { "first run: $_" }
             Get-Content "$name.txt" -ErrorAction SilentlyContinue |
               Select-String -Pattern '^(FAIL!|   Loc:|QFATAL|Totals)' -Context 0,2 | Select-Object -First 60
             Get-Content "$name.stderr.txt" -ErrorAction SilentlyContinue | Select-Object -First 20
