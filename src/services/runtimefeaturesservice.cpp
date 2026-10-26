@@ -96,6 +96,15 @@ bool RuntimeFeaturesService::useIntegratedWindowControls() const
 
 QString RuntimeFeaturesService::installHint(const QString &feature) const
 {
+#ifdef Q_OS_WIN
+    // Windows has its own remote, device and clipboard support; only the
+    // optional command-line helpers are worth a hint, with winget commands.
+    if (feature == QStringLiteral("videoPreview"))
+        return QStringLiteral("Install FFmpeg (winget install Gyan.FFmpeg) for videos Windows has no thumbnail for.");
+    if (feature == QStringLiteral("textHighlight"))
+        return QStringLiteral("Install bat (winget install sharkdp.bat) for syntax-highlighted text previews.");
+    return {};
+#endif
     if (feature == QStringLiteral("videoPreview"))
         return QStringLiteral("Install ffmpeg to enable video poster previews.");
     if (feature == QStringLiteral("pdfPreview"))

@@ -11,6 +11,10 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#ifdef Q_OS_WIN
+#include "services/winpdf.h"
+#endif
+
 namespace {
 
 QString formatDuration(double seconds)
@@ -102,6 +106,13 @@ QVariantMap MetadataExtractor::extract(const QString &path) const
 
 QString MetadataExtractor::missingDepsHint(const QString &mimeType) const
 {
+#ifdef Q_OS_WIN
+    if (mimeType.startsWith("image/") && !hasExifSupport())
+        return QStringLiteral("Install exiftool (winget install OliverBetz.ExifTool) for camera metadata (make/model, ISO, aperture, GPS)");
+    if ((mimeType.startsWith("audio/") || mimeType.startsWith("video/")) && !hasVideoSupport())
+        return QStringLiteral("Install FFmpeg (winget install Gyan.FFmpeg) for duration, codec and tags");
+    return {};   // PDF page count comes from Windows itself
+#endif
     if (mimeType.startsWith("image/") && !hasExifSupport())
         return QStringLiteral("Install exiftool for camera metadata (make/model, ISO, aperture, GPS)");
     if (mimeType.startsWith("audio/") && !hasTagLibSupport())
@@ -385,6 +396,14 @@ QVariantMap MetadataExtractor::extractVideo(const QString &path) const
 QVariantMap MetadataExtractor::extractPdf(const QString &path) const
 {
     QVariantMap meta;
+#ifdef Q_OS_WIN
+    if (!hasPdfSupport()) {
+        // No pdfinfo: Windows' own renderer still knows the page count.
+        if (const int pages = WinPdf::pageCount(path); pages > 0)
+            meta["Pages"] = QString::number(pages);
+        return meta;
+    }
+#endif
     if (!hasPdfSupport())
         return meta;
 

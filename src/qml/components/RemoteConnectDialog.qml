@@ -399,6 +399,7 @@ Q.Dialog {
 
     Q.Label {
         Layout.fillWidth: true
+        visible: text !== ""
         text: runtimeFeatures.installHint("remoteAccess")
         variant: "caption"
         color: Theme.subtext
@@ -407,7 +408,7 @@ Q.Dialog {
 
     Q.Label {
         Layout.fillWidth: true
-        visible: modeTabs.currentIndex === 1
+        visible: modeTabs.currentIndex === 1 && text !== ""
         text: runtimeFeatures.installHint("smbRemoteAccess")
         variant: "caption"
         color: Theme.subtext
