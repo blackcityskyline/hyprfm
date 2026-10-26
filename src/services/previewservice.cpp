@@ -813,6 +813,18 @@ QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntri
         return result;
     }
 
+#ifdef Q_OS_WIN
+    // Same rule as FileOperations: System32's bsdtar reads all of these,
+    // except that an installed 7z keeps 7z/rar.
+    if (program != QLatin1String("7z") || QStandardPaths::findExecutable(QStringLiteral("7z")).isEmpty()) {
+        program = QDir::fromNativeSeparators(qEnvironmentVariable("SystemRoot", QStringLiteral("C:\\Windows")))
+            + QStringLiteral("/System32/tar.exe");
+        args = {QStringLiteral("-tf"), path};
+        if (!password.isEmpty())
+            args << QStringLiteral("--passphrase") << password;
+    }
+#endif
+
     QProcess proc;
     proc.start(program, args);
     if (!proc.waitForFinished(10000)) {

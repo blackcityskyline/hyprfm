@@ -952,11 +952,53 @@ QString missingArchiveToolMessage(const QString &archivePath)
         .arg(suffix.isEmpty() ? QStringLiteral("archive") : suffix);
 }
 
+#ifdef Q_OS_WIN
+// Windows 10+ ships libarchive's bsdtar as System32\tar.exe: it detects the
+// format itself and reads zip, every tar flavour and (Windows 11) 7z/rar.
+// Called by full path, since Git for Windows puts a GNU tar on PATH that
+// cannot read zip. Single-file .gz/.xz/.bz2 have no bsdtar equivalent; a
+// real 7z, when installed, keeps 7z/rar for its password support.
+QString windowsTar()
+{
+    return QDir::fromNativeSeparators(qEnvironmentVariable("SystemRoot", QStringLiteral("C:\\Windows")))
+        + QStringLiteral("/System32/tar.exe");
+}
+
+bool useWindowsTarFor(ArchiveKind kind)
+{
+    switch (kind) {
+    case ArchiveKind::None:
+    case ArchiveKind::Gz:
+    case ArchiveKind::Xz:
+    case ArchiveKind::Bz2:
+        return false;
+    case ArchiveKind::SevenZip:
+    case ArchiveKind::Rar:
+        return QStandardPaths::findExecutable(QStringLiteral("7z")).isEmpty();
+    default:
+        return true;
+    }
+}
+
+QStringList windowsTarPassphrase(const QString &password)
+{
+    return password.isEmpty() ? QStringList() : QStringList{QStringLiteral("--passphrase"), password};
+}
+#endif
+
 bool archiveExtractCommand(const QString &archivePath, const QString &destination,
                            const QString &password,
                            QString *program, QStringList *args)
 {
     const QString pass = effectiveArchivePassword(password);
+#ifdef Q_OS_WIN
+    if (useWindowsTarFor(archiveKindForPath(archivePath))) {
+        *program = windowsTar();
+        *args = QStringList{QStringLiteral("-xf"), archivePath, QStringLiteral("-C"), destination}
+                + windowsTarPassphrase(password);
+        return true;
+    }
+#endif
 
     switch (archiveKindForPath(archivePath)) {
     case ArchiveKind::Zip:
@@ -1025,6 +1067,13 @@ bool archiveListCommand(const QString &archivePath, const QString &password,
                         QString *program, QStringList *args)
 {
     const QString pass = effectiveArchivePassword(password);
+#ifdef Q_OS_WIN
+    if (useWindowsTarFor(archiveKindForPath(archivePath))) {
+        *program = windowsTar();
+        *args = QStringList{QStringLiteral("-tf"), archivePath} + windowsTarPassphrase(password);
+        return true;
+    }
+#endif
 
     switch (archiveKindForPath(archivePath)) {
     case ArchiveKind::Zip:
@@ -2411,6 +2460,20 @@ int FileOperations::compressFiles(const QStringList &paths, const QString &forma
         return -1;
     }
 
+#ifdef Q_OS_WIN
+    // No zip.exe on Windows; bsdtar writes zip too (-a picks the format from
+    // the suffix). Plain "tar" is pinned to System32 for the same reason as
+    // extraction.
+    if (format == "zip") {
+        program = windowsTar();
+        args = {QStringLiteral("-a"), QStringLiteral("-cvf"), outputPath, QStringLiteral("-C"),
+                parentDir, QStringLiteral("--")};
+        for (const auto &p : paths)
+            args.append(QFileInfo(p).fileName());
+    } else if (program == QStringLiteral("tar")) {
+        program = windowsTar();
+    }
+#endif
     const QString statusText = QString("Compressing %1 item(s)...").arg(paths.size());
     auto processId = QSharedPointer<QAtomicInt>::create();
     auto cancelled = QSharedPointer<QAtomicInt>::create();
@@ -2496,7 +2559,9 @@ int FileOperations::extractArchive(const QString &archivePath, const QString &de
 
     // Add verbose flag for progress tracking
     QStringList verboseArgs = args;
-    if (program == "tar" || program == "bsdtar")
+    // Windows calls tar by its full System32 path.
+    const QString tool = QFileInfo(program).completeBaseName();
+    if (tool == "tar" || tool == "bsdtar")
         verboseArgs.prepend(QStringLiteral("-v"));
     else if (program == "unzip")
         { /* unzip is already verbose by default */ }

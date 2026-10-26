@@ -1438,6 +1438,35 @@ private slots:
         QVERIFY(QFile::exists(extractDir.path() + "/payload/inner.txt"));
     }
 
+#ifdef Q_OS_WIN
+    // Windows has no zip/unzip; both directions go through System32's tar.exe.
+    void testZipRoundTripThroughWindowsTar()
+    {
+        TestDir dir;
+        dir.createDir("payload");
+        dir.createFile("payload/inner.txt", "hello");
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+        QVERIFY(ops.compressFiles({dir.path() + "/payload"}, "zip") >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
+        QVERIFY2(spy.at(0).at(0).toBool(), qPrintable(spy.at(0).at(1).toString()));
+        const QString archivePath = dir.path() + "/payload.zip";
+        QVERIFY(QFile::exists(archivePath));
+
+        QFile::remove(dir.path() + "/payload/inner.txt");
+        QDir(dir.path() + "/payload").removeRecursively();
+        spy.clear();
+        const QString dest = ops.newExtractionFolder(archivePath);
+        QVERIFY(ops.extractArchive(archivePath, dest, QString()) >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
+        QVERIFY2(spy.at(0).at(0).toBool(), qPrintable(spy.at(0).at(1).toString()));
+        QFile inner(dest + "/inner.txt");
+        QVERIFY2(inner.open(QIODevice::ReadOnly), qPrintable(dest));
+        QCOMPARE(inner.readAll(), QByteArray("hello"));
+    }
+#endif
+
     // A password-protected archive must fail fast through the placeholder
     // password (never block waiting for stdin), report "password required",
     // and succeed once the real password is handed to the retry.
