@@ -820,11 +820,16 @@ bool removeTree(const QString &uri, QString *error)
 
 bool exists(const QString &uri)
 {
+    SftpSession::Entry info;
+    return stat(uri, &info);
+}
+
+bool stat(const QString &uri, SftpSession::Entry *entry, bool followLinks)
+{
     const QUrl url(uri);
     QString error;
     return withSession(url, [&](SftpSession &s, QString *e) {
-        SftpSession::Entry info;
-        return s.stat(pathOf(url), &info, e);
+        return s.stat(pathOf(url), entry, e, followLinks);
     }, &error);
 }
 

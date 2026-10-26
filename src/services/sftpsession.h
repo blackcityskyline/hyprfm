@@ -140,6 +140,8 @@ bool rename(const QString &fromUri, const QString &toUri, QString *error);
 // Deletes a file or a whole folder; links are removed, never followed.
 bool removeTree(const QString &uri, QString *error);
 bool exists(const QString &uri);
+// followLinks false: a link is reported as itself (isSymLink).
+bool stat(const QString &uri, SftpSession::Entry *entry, bool followLinks = true);
 // Total bytes under a file or folder, for progress.
 qint64 treeSize(const QString &uri);
 // Files and folders, recursively. `progress` gets bytes of the current file.

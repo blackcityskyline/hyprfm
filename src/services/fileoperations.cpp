@@ -562,7 +562,19 @@ QVariantMap remotePathInfo(const QString &path)
 #else
 // No gvfs on Windows; SFTP goes through the built-in session pool.
 bool gioPathExists(const QString &path) { return SftpFs::exists(path); }
-QVariantMap remotePathInfo(const QString &) { return {}; }
+QVariantMap remotePathInfo(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    SftpSession::Entry entry;
+    if (!SftpFs::stat(normalized, &entry, false))
+        return {};
+    return {{QStringLiteral("exists"), true},
+            {QStringLiteral("fileName"), locationFileName(normalized)},
+            {QStringLiteral("path"), normalized},
+            {QStringLiteral("isDir"), entry.isDir},
+            {QStringLiteral("size"), entry.size},
+            {QStringLiteral("isSymlink"), entry.isSymLink}};
+}
 #endif
 
 QVariantMap sourceInfoForPath(const QString &path)
