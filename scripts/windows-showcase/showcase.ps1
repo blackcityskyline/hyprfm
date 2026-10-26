@@ -153,6 +153,10 @@ function Stop-Clip { $script:clip.WaitForExit(30000) | Out-Null; 'clip done' }
 function Go($path) { Keys '^l' 500; Keys ($path -replace '([+^%~(){}\[\]])', '{$1}') 200; Keys '{ENTER}' 1200 }
 
 # ── Launch ──────────────────────────────────────────────────────────────────
+# The view's translucent surfaces show what is behind the window: the
+# runner's console otherwise, the wallpaper after this.
+(New-Object -ComObject Shell.Application).MinimizeAll()
+Start-Sleep -Seconds 1
 $p = Start-Process $Exe -ArgumentList "`"$demo`"" -PassThru `
     -RedirectStandardError (Join-Path $Out 'hyprfm.stderr.txt')
 for ($i = 0; $i -lt 60 -and $p.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 500; $p.Refresh() }
