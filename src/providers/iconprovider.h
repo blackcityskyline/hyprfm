@@ -127,8 +127,10 @@ public:
 #ifdef Q_OS_WIN
             // Windows ships no icon themes: unless the user installed one,
             // file icons are the shell's, as in Explorer.
-            const QImage shellIcon = WinShell::typeIcon(iconName, sz);
+            QImage shellIcon = WinShell::typeIcon(iconName, sz);
             if (!shellIcon.isNull()) {
+                shellIcon = shellIcon.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                tint(shellIcon, tintColor);
                 if (size)
                     *size = shellIcon.size();
                 remember(cacheKey, shellIcon);
@@ -166,17 +168,7 @@ public:
                 img = loaded.scaled(iconSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         }
 
-        // Tint: replace pixel colors with tintColor, preserving alpha
-        if (tintColor.isValid()) {
-            for (int y = 0; y < img.height(); ++y) {
-                QRgb *line = reinterpret_cast<QRgb*>(img.scanLine(y));
-                for (int x = 0; x < img.width(); ++x) {
-                    int a = qAlpha(line[x]);
-                    if (a > 0)
-                        line[x] = qRgba(tintColor.red(), tintColor.green(), tintColor.blue(), a);
-                }
-            }
-        }
+        tint(img, tintColor);
 
         if (size)
             *size = iconSize;
@@ -185,6 +177,21 @@ public:
     }
 
 private:
+    // Replace pixel colors with `color`, preserving alpha.
+    static void tint(QImage &img, const QColor &color)
+    {
+        if (!color.isValid())
+            return;
+        for (int y = 0; y < img.height(); ++y) {
+            QRgb *line = reinterpret_cast<QRgb*>(img.scanLine(y));
+            for (int x = 0; x < img.width(); ++x) {
+                int a = qAlpha(line[x]);
+                if (a > 0)
+                    line[x] = qRgba(color.red(), color.green(), color.blue(), a);
+            }
+        }
+    }
+
     void remember(const QString &key, const QImage &image)
     {
         QMutexLocker locker(&m_cacheMutex);
