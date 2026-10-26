@@ -298,6 +298,9 @@ private slots:
         QVERIFY2(setup.stat(remoteDir + "/inner/b.txt", &info, &error), qPrintable(error));
         QCOMPARE(info.size, qint64(200000));
 
+        QVERIFY2(!setup.stat(home + "/pack2", &info, &error), "pack2 is left from before");
+        error.clear();
+        QVERIFY2(!SftpFs::exists(base + "/pack2"), "a missing item counts as existing");
         const QVariantMap renamed = ops.renameResolvedItems(
             {QVariantMap {{"sourcePath", base + "/pack"}, {"targetPath", base + "/pack2"}}});
         QVERIFY2(renamed.value("success").toBool(), qPrintable(renamed.value("error").toString()));
