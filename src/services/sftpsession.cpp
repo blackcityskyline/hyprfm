@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QSaveFile>
 
 #include <winsock2.h>
@@ -721,7 +722,11 @@ bool safeLocalName(const QString &name)
         if (c.unicode() < 32 || forbidden.contains(c))
             return false;
     }
-    return true;
+    // Device names ("COM1", "nul.txt") open the device, not a file.
+    static const QRegularExpression device(
+        QStringLiteral("^(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|(COM|LPT)[0-9¹²³])( *\\..*)?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return !device.match(name).hasMatch();
 }
 
 bool downloadIn(SftpSession &s, const QString &path, const QString &local,

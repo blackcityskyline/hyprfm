@@ -48,7 +48,8 @@ private slots:
     void testHostileNamesAreNotDownloaded()
     {
         for (const QString &name : {QStringLiteral(".. "), QStringLiteral("a\\..\\b"),
-                                    QStringLiteral("C:x"), QStringLiteral("x.")}) {
+                                    QStringLiteral("C:x"), QStringLiteral("x."), QStringLiteral("COM1"),
+                                    QStringLiteral("nul.txt")}) {
             QString error;
             QVERIFY(!SftpFs::download(QStringLiteral("sftp://nobody@") + m_host + QStringLiteral("/tmp/")
                                           + QString::fromLatin1(QUrl::toPercentEncoding(name)),
