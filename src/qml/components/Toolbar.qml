@@ -108,6 +108,13 @@ Rectangle {
         }
     }
 
+    // Frameless windows lose the caption's double-click-to-maximize.
+    TapHandler {
+        enabled: root.showWindowControls
+        acceptedButtons: Qt.LeftButton
+        onDoubleTapped: root.maximizeRequested()
+    }
+
     ColumnLayout {
         id: toolbarColumn
         anchors.left: parent.left

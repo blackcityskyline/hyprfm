@@ -29,6 +29,10 @@ bool runtimeFeaturesHostToolAvailable(const QString &program)
 
 bool isIntegratedWindowControlsDesktop()
 {
+#ifdef Q_OS_WIN
+    // The native caption would sit as a second bar above the toolbar.
+    return true;
+#endif
     const QString desktopId = (qEnvironmentVariable("XDG_CURRENT_DESKTOP")
         + QLatin1Char(';')
         + qEnvironmentVariable("DESKTOP_SESSION")).toLower();

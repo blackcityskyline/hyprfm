@@ -17,10 +17,12 @@ ApplicationWindow {
     visibility: Window.Windowed
     title: "HyprFM"
     color: "transparent"
-    flags: Qt.platform.os === "linux" && runtimeFeatures.useIntegratedWindowControls
+    flags: (Qt.platform.os === "linux" && runtimeFeatures.useIntegratedWindowControls)
+           || (Qt.platform.os === "windows" && config.showWindowControls)
         ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
 
-    readonly property bool useIntegratedWindowControls: Qt.platform.os === "linux"
+    readonly property bool useIntegratedWindowControls:
+        (Qt.platform.os === "linux" || Qt.platform.os === "windows")
         && config.showWindowControls
 
     property bool primaryPaneIsRecents: false
@@ -4556,6 +4558,37 @@ ApplicationWindow {
                 }
             }
             pendingCloudCallbacks = remaining
+        }
+    }
+
+    // A frameless window has no native border to grab, so thin strips along
+    // the edges and corners hand resizing back to the window manager.
+    Repeater {
+        model: (root.flags & Qt.FramelessWindowHint) && root.visibility === Window.Windowed
+               ? [
+                   { e: Qt.TopEdge, c: Qt.SizeVerCursor },
+                   { e: Qt.BottomEdge, c: Qt.SizeVerCursor },
+                   { e: Qt.LeftEdge, c: Qt.SizeHorCursor },
+                   { e: Qt.RightEdge, c: Qt.SizeHorCursor },
+                   { e: Qt.TopEdge | Qt.LeftEdge, c: Qt.SizeFDiagCursor },
+                   { e: Qt.BottomEdge | Qt.RightEdge, c: Qt.SizeFDiagCursor },
+                   { e: Qt.TopEdge | Qt.RightEdge, c: Qt.SizeBDiagCursor },
+                   { e: Qt.BottomEdge | Qt.LeftEdge, c: Qt.SizeBDiagCursor }
+                 ]
+               : []
+        delegate: MouseArea {
+            readonly property int grip: 5
+            readonly property bool horizontal: modelData.e & (Qt.LeftEdge | Qt.RightEdge)
+            readonly property bool vertical: modelData.e & (Qt.TopEdge | Qt.BottomEdge)
+            parent: root.contentItem
+            z: 10000
+            width: horizontal ? grip * (vertical ? 2 : 1) : parent.width
+            height: vertical ? grip * (horizontal ? 2 : 1) : parent.height
+            x: modelData.e & Qt.RightEdge ? parent.width - width : 0
+            y: modelData.e & Qt.BottomEdge ? parent.height - height : 0
+            cursorShape: modelData.c
+            acceptedButtons: Qt.LeftButton
+            onPressed: root.startSystemResize(modelData.e)
         }
     }
 }
