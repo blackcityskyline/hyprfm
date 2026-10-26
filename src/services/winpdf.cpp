@@ -1,6 +1,7 @@
 // C++/WinRT first: Qt's keyword macros (emit, signals, slots) must not be
 // defined while the WinRT projection headers are parsed.
 #include <windows.h>
+#include <objbase.h>
 #include <winrt/Windows.Data.Pdf.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Graphics.Imaging.h>
