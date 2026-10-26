@@ -116,33 +116,62 @@ qint64 dirTotalBytes(const QString &dir)
     return total;
 }
 
+#ifdef Q_OS_WIN
+// Windows has no SIGSTOP/SIGCONT; ntdll's NtSuspendProcess/NtResumeProcess
+// (what Task Manager and Process Explorer use) freeze every thread at once.
+bool signalWindowsProcess(int pid, DWORD access, const char *ntCall)
+{
+    HANDLE process = OpenProcess(access, FALSE, DWORD(pid));
+    if (!process)
+        return false;
+    bool ok = false;
+    if (!ntCall) {
+        ok = TerminateProcess(process, 1);
+    } else if (auto fn = reinterpret_cast<LONG(NTAPI *)(HANDLE)>(
+                   GetProcAddress(GetModuleHandleW(L"ntdll.dll"), ntCall))) {
+        ok = fn(process) >= 0;
+    }
+    CloseHandle(process);
+    return ok;
+}
+#endif
+
 // Signal a subprocess by its pid (published as an atomic by simple
 // operations) so transfers can be paused, resumed or cancelled from the GUI
 // thread without touching the QProcess object living in the worker thread.
 void suspendProcess(QAtomicInt *pid)
 {
-#ifdef Q_OS_UNIX
     const int p = pid ? pid->loadRelaxed() : 0;
-    if (p > 0)
-        ::kill(static_cast<pid_t>(p), SIGSTOP);
+    if (p <= 0)
+        return;
+#ifdef Q_OS_UNIX
+    ::kill(static_cast<pid_t>(p), SIGSTOP);
+#elif defined(Q_OS_WIN)
+    signalWindowsProcess(p, PROCESS_SUSPEND_RESUME, "NtSuspendProcess");
 #endif
 }
 
 void resumeProcess(QAtomicInt *pid)
 {
-#ifdef Q_OS_UNIX
     const int p = pid ? pid->loadRelaxed() : 0;
-    if (p > 0)
-        ::kill(static_cast<pid_t>(p), SIGCONT);
+    if (p <= 0)
+        return;
+#ifdef Q_OS_UNIX
+    ::kill(static_cast<pid_t>(p), SIGCONT);
+#elif defined(Q_OS_WIN)
+    signalWindowsProcess(p, PROCESS_SUSPEND_RESUME, "NtResumeProcess");
 #endif
 }
 
 void killProcess(QAtomicInt *pid)
 {
-#ifdef Q_OS_UNIX
     const int p = pid ? pid->loadRelaxed() : 0;
-    if (p > 0)
-        ::kill(static_cast<pid_t>(p), SIGKILL);
+    if (p <= 0)
+        return;
+#ifdef Q_OS_UNIX
+    ::kill(static_cast<pid_t>(p), SIGKILL);
+#elif defined(Q_OS_WIN)
+    signalWindowsProcess(p, PROCESS_TERMINATE, nullptr);
 #endif
 }
 
