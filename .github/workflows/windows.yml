@@ -108,6 +108,11 @@ jobs:
               -ErrorAction SilentlyContinue
           }
           Remove-Item -Recurse -Force "$bin/qml/QtQuick/NativeStyle" -ErrorAction SilentlyContinue
+          # The VC++ runtime next to the exe, so it runs on a PC without the
+          # redistributable installed (app-local deployment).
+          $crt = Get-ChildItem "$env:VCToolsRedistDir/x64" -Directory -Filter 'Microsoft.VC*.CRT' |
+                 Select-Object -First 1
+          Copy-Item "$($crt.FullName)/*.dll" $bin
           Get-ChildItem stage -Recurse -File | Measure-Object -Sum Length |
             ForEach-Object { "Package: {0} files, {1:N1} MB" -f $_.Count, ($_.Sum / 1MB) }
 
@@ -115,7 +120,8 @@ jobs:
         if: always() && hashFiles('stage/bin/hyprfm.exe') != ''
         shell: pwsh
         run: |
-          & stage/bin/hyprfm.exe --version
+          # A GUI exe does not block the shell; piping waits for it.
+          & stage/bin/hyprfm.exe --version | Out-String
           $env:HYPRFM_TIMING = '1'
           $env:QT_FORCE_STDERR_LOGGING = '1'
           $p = Start-Process stage/bin/hyprfm.exe -ArgumentList 'C:/Windows' -PassThru `
@@ -134,9 +140,33 @@ jobs:
           # A pruned module shows up as a QML load error, not a crash.
           if (Select-String -Path smoke.err -Pattern 'is not installed|module .* not found|qrc:.*Error' -Quiet) { exit 1 }
 
+      - name: Zip and installer
+        id: dist
+        if: success()
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(hyprfm VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $version = "$version-$("${{ github.sha }}".Substring(0, 7))"
+          New-Item -ItemType Directory -Force dist-out | Out-Null
+          Compress-Archive -Path stage/* -DestinationPath "dist-out/HyprFM-$version-portable-x64.zip"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            choco install innosetup -y --no-progress | Out-Null
+            $env:Path += ';C:\Program Files (x86)\Inno Setup 6'
+          }
+          iscc /Qp "/DAppVersion=$version" "/DStageDir=${{ github.workspace }}\stage" `
+               "/Odist-out" dist/windows/hyprfm.iss
+          Get-ChildItem dist-out | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+
       - name: Upload
         if: always() && hashFiles('stage/bin/hyprfm.exe') != ''
         uses: actions/upload-artifact@v4
         with:
           name: hyprfm-windows-x64
           path: stage
+
+      - name: Upload zip and installer
+        if: steps.dist.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyprfm-windows-dist
+          path: dist-out

@@ -38,6 +38,10 @@ endif()
 # tests (which used to recompile the same sources, some up to ten times).
 qt_add_library(hyprfm_core STATIC ${HYPRFM_SOURCES})
 qt_add_executable(hyprfm main.cpp)
+if(WIN32)
+    target_sources(hyprfm PRIVATE ${CMAKE_SOURCE_DIR}/dist/windows/hyprfm.rc)
+    set_target_properties(hyprfm PROPERTIES WIN32_EXECUTABLE ON)
+endif()
 
 option(HYPRFM_ENABLE_PCH "Enable precompiled headers (faster builds)" ON)
 option(HYPRFM_ENABLE_UNITY_BUILD "Enable unity builds (faster clean builds)" ON)
@@ -252,8 +256,6 @@ target_link_libraries(hyprfm_core PUBLIC
 )
 if(WIN32)
     target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32)
-    # Console build until the port settles: stderr is the only log channel CI sees.
-    # ponytail: flip to WIN32_EXECUTABLE ON for release packaging.
 else()
     target_link_libraries(hyprfm_core PUBLIC Qt6::DBus PkgConfig::GIO)
 endif()

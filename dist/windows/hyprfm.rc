@@ -1,0 +1,3 @@
+// Icon for hyprfm.exe (Explorer, taskbar, Alt+Tab). IDI_ICON1 is the name
+// Qt looks up for the window icon on Windows.
+IDI_ICON1 ICON "hyprfm.ico"
