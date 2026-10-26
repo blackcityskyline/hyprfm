@@ -118,6 +118,8 @@ signals:
     // The full properties of a remote location fileProperties() answered
     // with a pending placeholder.
     void remotePropertiesReady(const QString &path, const QVariantMap &properties);
+    // An sftp:// folder needs logging in first (Windows; no saved session).
+    void remoteLoginRequired(const QString &uri);
     void folderItemCountsReady(int requestId, const QVariantMap &counts);
 
 private:
@@ -188,6 +190,10 @@ private:
     void reloadTrash();
     void cancelRemoteReload();
     void applyRemoteReload(const QString &rootPath, const QByteArray &output);
+    void applyRemoteEntries(const QString &rootPath, QList<QVariantMap> entries);
+#ifdef Q_OS_WIN
+    void startSftpList(const QString &rootPath, int generation);
+#endif
     // Local scans go through a QtConcurrent future so the GUI thread never
     // blocks on QDir::entryInfoList. Generation counter ensures stale
     // results (user navigated away mid-scan) are discarded.

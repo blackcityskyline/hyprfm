@@ -575,3 +575,47 @@ bool SftpSession::rename(const QString &from, const QString &to, QString *error)
     }
     return true;
 }
+
+bool SftpSession::isBroken() const
+{
+    if (!m_session)
+        return true;
+    const int code = libssh2_session_last_errno(m_session);
+    return code != LIBSSH2_ERROR_NONE && code != LIBSSH2_ERROR_SFTP_PROTOCOL;
+}
+
+SftpPool &SftpPool::instance()
+{
+    static SftpPool pool;
+    return pool;
+}
+
+QString SftpPool::userFor(const QUrl &url)
+{
+    return url.userName().isEmpty() ? qEnvironmentVariable("USERNAME") : url.userName();
+}
+
+QString SftpPool::keyFor(const QUrl &url)
+{
+    return QStringLiteral("%1@%2:%3").arg(userFor(url), url.host().toLower()).arg(url.port(22));
+}
+
+std::shared_ptr<SftpPool::Slot> SftpPool::find(const QUrl &url) const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_slots.value(keyFor(url));
+}
+
+void SftpPool::add(const QUrl &url, std::shared_ptr<SftpSession> session)
+{
+    auto slot = std::make_shared<Slot>();
+    slot->session = std::move(session);
+    QMutexLocker lock(&m_mutex);
+    m_slots.insert(keyFor(url), slot);
+}
+
+void SftpPool::drop(const QUrl &url)
+{
+    QMutexLocker lock(&m_mutex);
+    m_slots.remove(keyFor(url));
+}

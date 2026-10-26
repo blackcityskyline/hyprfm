@@ -1,8 +1,11 @@
 #include <QTest>
 #include <QFile>
 #include <QRandomGenerator>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 
+#include "models/filesystemmodel.h"
+#include "services/remoteaccessservice.h"
 #include "services/sftpsession.h"
 
 // Runs against the OpenSSH server the Windows CI job starts on localhost,
@@ -176,7 +179,66 @@ private slots:
         QVERIFY2(s.removeDir(dir, &error), qPrintable(error));
         QVERIFY(!s.stat(dir, &info, &error));
     }
+
+    // The app's path: Connect asks to confirm an unknown key (with the real
+    // known_hosts), logs in with keys, and a pane then lists the folder
+    // through the pooled session. A user with no session asks to log in.
+    void testConnectThenBrowse()
+    {
+        QString error;
+        SftpSession setup;
+        QVERIFY2(open(setup, &error), qPrintable(error));
+        const QString home = setup.homePath(&error);
+        const QString dir = home + "/hyprfm-browse-test";
+        setup.removeFile(dir + "/hello.txt", &error);
+        setup.removeDir(dir + "/sub", &error);
+        setup.removeDir(dir, &error);
+        QVERIFY2(setup.makeDir(dir, &error), qPrintable(error));
+        QVERIFY2(setup.makeDir(dir + "/sub", &error), qPrintable(error));
+        const QString local = m_tmp.path() + "/hello.txt";
+        QFile f(local);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("hello");
+        f.close();
+        QVERIFY2(setup.upload(local, dir + "/hello.txt", {}, &error), qPrintable(error));
+
+        const QString uri = QStringLiteral("sftp://%1@%2%3").arg(m_user, m_host, dir);
+        RemoteAccessService service;
+        QSignalSpy finished(&service, &RemoteAccessService::connectionFinished);
+        QSignalSpy askKey(&service, &RemoteAccessService::hostKeyConfirmationRequested);
+        QSignalSpy askPassword(&service, &RemoteAccessService::passwordRequested);
+        service.connectToLocation(uri);
+        QTRY_VERIFY_WITH_TIMEOUT(finished.count() + askKey.count() + askPassword.count() > 0, 20000);
+        if (askKey.count() > 0) {
+            QVERIFY(askKey.first().at(1).toString().startsWith("SHA256:"));
+            service.trustHostKey();
+            QTRY_VERIFY_WITH_TIMEOUT(finished.count() + askPassword.count() > 0, 20000);
+        }
+        QCOMPARE(askPassword.count(), 0);
+        QVERIFY2(finished.first().at(0).toBool(), qPrintable(finished.first().at(2).toString()));
+        QVERIFY(!service.busy());
+
+        FileSystemModel model;
+        model.setRootPath(uri);
+        QTRY_VERIFY_WITH_TIMEOUT(model.rowCount() == 2, 20000);
+        QCOMPARE(model.fileName(0), QStringLiteral("sub"));   // folders first
+        QVERIFY(model.isDir(0));
+        QCOMPARE(model.fileName(1), QStringLiteral("hello.txt"));
+        QVERIFY(!model.isDir(1));
+        QCOMPARE(QUrl(model.filePath(1)).path(), dir + "/hello.txt");
+
+        FileSystemModel stranger;
+        QSignalSpy login(&stranger, &FileSystemModel::remoteLoginRequired);
+        const QString strangerUri = QStringLiteral("sftp://hyprfm-nobody@%1/").arg(m_host);
+        stranger.setRootPath(strangerUri);
+        QTRY_COMPARE_WITH_TIMEOUT(login.count(), 1, 10000);
+        QCOMPARE(login.first().at(0).toString(), strangerUri);
+
+        setup.removeFile(dir + "/hello.txt", &error);
+        setup.removeDir(dir + "/sub", &error);
+        setup.removeDir(dir, &error);
+    }
 };
 
-QTEST_GUILESS_MAIN(TestSftpSession)
+QTEST_MAIN(TestSftpSession)
 #include "tst_sftpsession.moc"

@@ -4,7 +4,12 @@
 #include <QList>
 #include <QString>
 
+#include <QHash>
+#include <QMutex>
+#include <QUrl>
+
 #include <functional>
+#include <memory>
 
 struct _LIBSSH2_SESSION;
 struct _LIBSSH2_SFTP;
@@ -71,6 +76,11 @@ public:
     bool removeDir(const QString &path, QString *error);
     bool rename(const QString &from, const QString &to, QString *error);
 
+    // The connection itself failed (dropped, timed out) rather than one file
+    // operation; the pool should forget the session. Only meaningful right
+    // after a call failed (libssh2 keeps the last error until the next one).
+    bool isBroken() const;
+
 private:
     QString sessionError() const;
     QString sftpError(const QString &what) const;
@@ -86,4 +96,30 @@ private:
     QString m_knownHosts;
     QByteArray m_password;   // only while authenticate() runs
     friend struct SftpSessionCallbacks;
+};
+
+// Logged-in sessions, one per user@host:port, shared by every view and
+// transfer. Each is used by one thread at a time under its mutex.
+class SftpPool
+{
+public:
+    struct Slot {
+        QMutex mutex;
+        std::shared_ptr<SftpSession> session;
+    };
+
+    static SftpPool &instance();
+
+    // "user@host:port"; the user defaults to the Windows account name.
+    static QString keyFor(const QUrl &url);
+    static QString userFor(const QUrl &url);
+
+    std::shared_ptr<Slot> find(const QUrl &url) const;
+    void add(const QUrl &url, std::shared_ptr<SftpSession> session);
+    // Forget a session whose connection broke; the next use reconnects.
+    void drop(const QUrl &url);
+
+private:
+    mutable QMutex m_mutex;
+    QHash<QString, std::shared_ptr<Slot>> m_slots;
 };

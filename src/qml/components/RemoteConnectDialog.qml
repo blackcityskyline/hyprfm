@@ -10,14 +10,23 @@ Q.Dialog {
     z: 1000
     dialogWidth: 520
     title: "Connect to Server"
-    subtitle: "Browse SFTP, SMB, and FTP locations through GVFS"
+    subtitle: Qt.platform.os === "windows"
+        ? "Browse SFTP servers and SMB shares"
+        : "Browse SFTP, SMB, and FTP locations through GVFS"
     initialFocusItem: hostField
 
     property string errorText: ""
+    // Windows SFTP login questions: "", "hostkey" or "password".
+    property string loginStage: ""
+    property string loginHost: ""
+    property string loginUser: ""
+    property string hostKeyFingerprint: ""
     signal connected(string uri)
 
     function resetForm() {
         errorText = ""
+        loginStage = ""
+        passwordField.text = ""
         modeTabs.currentIndex = 0
         hostField.text = ""
         userField.text = ""
@@ -43,6 +52,34 @@ Q.Dialog {
         )
     }
 
+    // Open prefilled with a location (a bookmark that needs logging in again)
+    // and start connecting straight away.
+    function connectTo(uri) {
+        resetForm()
+        modeTabs.currentIndex = 3
+        directUriField.text = uri
+        addBookmarkToggle.checked = false   // logging in again, not a new place
+        open()
+        connectCurrentLocation()
+    }
+
+    function primaryAction() {
+        if (loginStage === "hostkey") {
+            loginStage = ""
+            remoteAccessService.trustHostKey()
+        } else if (loginStage === "password") {
+            if (passwordField.text === "") {
+                errorText = "Enter the password."
+                return
+            }
+            errorText = ""
+            remoteAccessService.providePassword(passwordField.text)
+            passwordField.text = ""
+        } else {
+            connectCurrentLocation()
+        }
+    }
+
     function connectCurrentLocation() {
         errorText = ""
         var uri = currentUri()
@@ -60,9 +97,28 @@ Q.Dialog {
     Connections {
         target: remoteAccessService
 
+        function onHostKeyConfirmationRequested(host, fingerprint) {
+            if (!root.visible)
+                return remoteAccessService.cancelLogin()
+            root.loginHost = host
+            root.hostKeyFingerprint = fingerprint
+            root.loginStage = "hostkey"
+        }
+
+        function onPasswordRequested(user, host, error) {
+            if (!root.visible)
+                return remoteAccessService.cancelLogin()
+            root.loginUser = user
+            root.loginHost = host
+            root.errorText = error
+            root.loginStage = "password"
+            Qt.callLater(function() { passwordField.inputItem.forceActiveFocus() })
+        }
+
         function onConnectionFinished(success, uri, error) {
             if (!root.visible)
                 return
+            root.loginStage = ""
 
             if (!success) {
                 root.errorText = error || "Couldn't connect to that location."
@@ -389,7 +445,9 @@ Q.Dialog {
 
     Q.Label {
         Layout.fillWidth: true
-        text: modeTabs.currentIndex === 3
+        text: Qt.platform.os === "windows"
+            ? "Keys from the ssh-agent and ~/.ssh are tried first; you will be asked for a password if the server needs one."
+            : modeTabs.currentIndex === 3
             ? "Use a full GVFS-compatible URI if you already have one."
             : "GVFS will prompt for credentials if the remote server requires them."
         variant: "caption"
@@ -415,6 +473,55 @@ Q.Dialog {
         wrapMode: Text.WordWrap
     }
 
+    // --- SFTP login questions (Windows) ---
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        visible: root.loginStage === "hostkey"
+        spacing: 4
+
+        Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: "First connection to " + root.loginHost + ". Check that this key fingerprint matches the server's before trusting it:"
+            color: Theme.text
+            font.pointSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+
+        Q.Label {
+            Layout.fillWidth: true
+            objectName: "hostKeyFingerprint"
+            text: root.hostKeyFingerprint
+            variant: "body"
+            font.family: Qt.platform.os === "windows" ? "Consolas" : "monospace"
+            wrapMode: Text.WrapAnywhere
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        visible: root.loginStage === "password"
+        spacing: 4
+
+        Text {
+            textFormat: Text.PlainText
+            text: "Password for " + root.loginUser + "@" + root.loginHost
+            color: Theme.subtext
+            font.pointSize: Theme.fontSmall
+        }
+
+        Q.TextField {
+            id: passwordField
+            objectName: "remotePasswordField"
+            Layout.fillWidth: true
+            variant: "filled"
+            placeholder: "Password"
+            echoMode: TextInput.Password
+            inputItem.Keys.onReturnPressed: root.primaryAction()
+        }
+    }
+
     // --- Error message ---
 
     Text {
@@ -437,16 +544,24 @@ Q.Dialog {
             text: "Cancel"
             variant: "ghost"
             size: "small"
-            enabled: !remoteAccessService.busy
-            onClicked: root.reject()
+            // A Windows SFTP login can be abandoned at any step.
+            enabled: Qt.platform.os === "windows" || !remoteAccessService.busy
+            onClicked: {
+                root.loginStage = ""
+                remoteAccessService.cancelLogin()
+                root.reject()
+            }
         }
 
         Q.Button {
-            text: remoteAccessService.busy ? "Connecting..." : "Connect"
+            text: remoteAccessService.busy ? "Connecting..."
+                : root.loginStage === "hostkey" ? "Trust and Connect"
+                : root.loginStage === "password" ? "Log In"
+                : "Connect"
             variant: "primary"
             size: "small"
             enabled: !remoteAccessService.busy
-            onClicked: root.connectCurrentLocation()
+            onClicked: root.primaryAction()
         }
     }
 }

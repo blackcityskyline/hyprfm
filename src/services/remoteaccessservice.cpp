@@ -1,7 +1,14 @@
 #include "services/remoteaccessservice.h"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QPointer>
+#include <QThreadPool>
 #include <QUrl>
+
+#ifdef Q_OS_WIN
+#include "services/sftpsession.h"
+#endif
 
 RemoteAccessService::RemoteAccessService(QObject *parent)
     : QObject(parent)
@@ -10,7 +17,7 @@ RemoteAccessService::RemoteAccessService(QObject *parent)
 
 bool RemoteAccessService::busy() const
 {
-    return m_process != nullptr;
+    return m_process != nullptr || m_loginBusy;
 }
 
 QString RemoteAccessService::buildUri(const QString &protocol, const QString &host,
@@ -60,6 +67,14 @@ void RemoteAccessService::connectToLocation(const QString &uri)
         m_process->deleteLater();
         m_process = nullptr;
     }
+
+#ifdef Q_OS_WIN
+    if (QUrl(trimmedUri).scheme() == QStringLiteral("sftp")) {
+        m_pendingUri = trimmedUri;
+        startSftpLogin(QUrl(trimmedUri));
+        return;
+    }
+#endif
 
     m_pendingUri = trimmedUri;
     QProcess *process = new QProcess(this);
@@ -120,3 +135,148 @@ void RemoteAccessService::connectToLocation(const QString &uri)
     process->start(QStringLiteral("gio"), {QStringLiteral("mount"), trimmedUri});
 #endif
 }
+
+// Each login step blocks on the network, so it runs on the thread pool and
+// reports back on the GUI thread; a cancelled or superseded login is ignored.
+template<typename Work, typename Done>
+void RemoteAccessService::runOffThread(Work work, Done done)
+{
+    QPointer<RemoteAccessService> self(this);
+    QThreadPool::globalInstance()->start([self, work, done]() mutable {
+        auto result = work();
+        QMetaObject::invokeMethod(qApp, [self, done, result]() mutable {
+            if (self)
+                done(result);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void RemoteAccessService::setLoginBusy(bool busy)
+{
+    if (m_loginBusy == busy)
+        return;
+    m_loginBusy = busy;
+    emit busyChanged();
+}
+
+void RemoteAccessService::cancelLogin()
+{
+    m_login.reset();
+    setLoginBusy(false);
+}
+
+#ifdef Q_OS_WIN
+
+void RemoteAccessService::startSftpLogin(const QUrl &url)
+{
+    if (SftpPool::instance().find(url)) {
+        emit connectionFinished(true, m_pendingUri, QString());
+        return;
+    }
+    auto session = std::make_shared<SftpSession>();
+    m_login = session;
+    m_loginUrl = url;
+    setLoginBusy(true);
+
+    struct Result { bool ok; SftpSession::HostKey key; QString text; };
+    const QString host = url.host();
+    const int port = url.port(22);
+    runOffThread([session, host, port] {
+        QString error;
+        if (!session->connectToHost(host, port, &error))
+            return Result{false, SftpSession::HostKey::Unknown, error};
+        QString fingerprint;
+        const SftpSession::HostKey key = session->hostKey(&fingerprint);
+        return Result{true, key, fingerprint};
+    }, [this, session, host](const Result &r) {
+        if (session != m_login)
+            return;
+        if (!r.ok)
+            return finishSftpLogin(false, r.text);
+        switch (r.key) {
+        case SftpSession::HostKey::Known:
+            return runSftpAuth(QString());
+        case SftpSession::HostKey::Unknown:
+            setLoginBusy(false);
+            emit hostKeyConfirmationRequested(host, r.text);
+            return;
+        case SftpSession::HostKey::Changed:
+            return finishSftpLogin(false, QStringLiteral(
+                "The key of %1 does not match the one on record (%2). Someone may be "
+                "intercepting the connection. If the server was reinstalled, remove its "
+                "line from %3 and connect again.")
+                .arg(host, r.text, QDir::toNativeSeparators(QDir::homePath() + "/.ssh/known_hosts")));
+        case SftpSession::HostKey::OtherType:
+            return finishSftpLogin(false, QStringLiteral(
+                "%1 is on record with a different kind of key than it offers now (%2), "
+                "so it cannot be verified. Connecting is refused.").arg(host, r.text));
+        }
+    });
+}
+
+void RemoteAccessService::trustHostKey()
+{
+    auto session = m_login;
+    if (!session)
+        return;
+    setLoginBusy(true);
+    runOffThread([session] {
+        QString error;
+        return session->trustHostKey(&error) ? QString() : error;
+    }, [this, session](const QString &error) {
+        if (session != m_login)
+            return;
+        if (!error.isEmpty())
+            return finishSftpLogin(false, error);
+        runSftpAuth(QString());
+    });
+}
+
+void RemoteAccessService::providePassword(const QString &password)
+{
+    if (m_login)
+        runSftpAuth(password);
+}
+
+void RemoteAccessService::runSftpAuth(const QString &password)
+{
+    auto session = m_login;
+    setLoginBusy(true);
+    struct Result { SftpSession::Auth auth; QString error; };
+    const QString user = SftpPool::userFor(m_loginUrl);
+    runOffThread([session, user, password] {
+        QString error;
+        const SftpSession::Auth auth = session->authenticate(user, password, &error);
+        return Result{auth, error};
+    }, [this, session, user, password](const Result &r) {
+        if (session != m_login)
+            return;
+        if (r.auth == SftpSession::Auth::Ok) {
+            SftpPool::instance().add(m_loginUrl, session);
+            return finishSftpLogin(true, QString());
+        }
+        if (r.auth == SftpSession::Auth::NeedPassword) {
+            setLoginBusy(false);
+            emit passwordRequested(user, m_loginUrl.host(), password.isEmpty() ? QString() : r.error);
+            return;
+        }
+        finishSftpLogin(false, r.error);
+    });
+}
+
+void RemoteAccessService::finishSftpLogin(bool success, const QString &error)
+{
+    m_login.reset();
+    setLoginBusy(false);
+    emit connectionFinished(success, m_pendingUri, error);
+}
+
+#else
+
+void RemoteAccessService::startSftpLogin(const QUrl &) {}
+void RemoteAccessService::trustHostKey() {}
+void RemoteAccessService::providePassword(const QString &) {}
+void RemoteAccessService::runSftpAuth(const QString &) {}
+void RemoteAccessService::finishSftpLogin(bool, const QString &) {}
+
+#endif

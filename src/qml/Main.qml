@@ -405,6 +405,17 @@ ApplicationWindow {
         return !!path && !fileOps.isRemotePath(path) && path.indexOf("://") < 0
     }
 
+    // A pane opened an sftp:// folder with no logged-in session (Windows):
+    // log in through the Connect dialog, then list the folder again.
+    function openRemoteLogin(uri, model) {
+        if (root.remoteConnectDialog && root.remoteConnectDialog.visible)
+            return
+        remoteConnectDialogLoader.active = true
+        root.pendingRemoteLoginModel = model
+        root.remoteConnectDialog.connectTo(uri)
+    }
+    property var pendingRemoteLoginModel: null
+
     function openRemoteConnectDialog() {
         remoteConnectDialogLoader.active = true
         root.remoteConnectDialog.resetForm()
@@ -1494,7 +1505,15 @@ ApplicationWindow {
         active: false
         sourceComponent: Component {
             RemoteConnectDialog {
-                onConnected: (uri) => root.navigateActivePaneTo(uri)
+                onConnected: (uri) => {
+                    const model = root.pendingRemoteLoginModel
+                    root.pendingRemoteLoginModel = null
+                    if (model)
+                        model.refresh()   // the pane is already at uri
+                    else
+                        root.navigateActivePaneTo(uri)
+                }
+                onRejected: root.pendingRemoteLoginModel = null
             }
         }
     }
@@ -4533,12 +4552,18 @@ ApplicationWindow {
         function onWatchedDirectoryChanged(path) {
             diskUsageService.invalidatePath(path)
         }
+        function onRemoteLoginRequired(uri) {
+            root.openRemoteLogin(uri, fsModel)
+        }
     }
 
     Connections {
         target: splitFsModel
         function onWatchedDirectoryChanged(path) {
             diskUsageService.invalidatePath(path)
+        }
+        function onRemoteLoginRequired(uri) {
+            root.openRemoteLogin(uri, splitFsModel)
         }
     }
 

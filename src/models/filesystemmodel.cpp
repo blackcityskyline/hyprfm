@@ -10,6 +10,9 @@
 #include "services/cloudmounts.h"
 #include "services/gitstatusservice.h"
 #include "services/xdgtrash.h"
+#ifdef Q_OS_WIN
+#include "services/sftpsession.h"
+#endif
 #include <QFile>
 #include <QLocale>
 #include <QDateTime>
@@ -1511,6 +1514,13 @@ void FileSystemModel::startRemoteMount(const QString &rootPath, int generation)
 
 void FileSystemModel::startRemoteList(const QString &rootPath, int generation, bool afterMount)
 {
+#ifdef Q_OS_WIN
+    // No GVFS on Windows: SFTP goes through the logged-in session pool.
+    if (QUrl(rootPath).scheme() == QStringLiteral("sftp")) {
+        startSftpList(rootPath, generation);
+        return;
+    }
+#endif
     QStringList args = {
         QStringLiteral("list"),
         QStringLiteral("-l"),
@@ -1580,9 +1590,6 @@ void FileSystemModel::cancelRemoteReload()
 
 void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArray &output)
 {
-    if (rootPath != m_rootPath || !isRemoteRoot())
-        return;
-
     QList<QVariantMap> entries;
     const QStringList lines = QString::fromUtf8(output).split('\n', Qt::SkipEmptyParts);
     for (const QString &line : lines) {
@@ -1590,6 +1597,13 @@ void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArra
         if (!entry.isEmpty())
             entries.append(entry);
     }
+    applyRemoteEntries(rootPath, std::move(entries));
+}
+
+void FileSystemModel::applyRemoteEntries(const QString &rootPath, QList<QVariantMap> entries)
+{
+    if (rootPath != m_rootPath || !isRemoteRoot())
+        return;
 
     const QString afcDocumentsUri = afcDocumentsUriFor(m_rootPath);
     if (!afcDocumentsUri.isEmpty()) {
@@ -2555,3 +2569,69 @@ QVariantList FileSystemModel::pathSuggestions(const QString &input, int limit) c
 
     return suggestions;
 }
+
+#ifdef Q_OS_WIN
+void FileSystemModel::startSftpList(const QString &rootPath, int generation)
+{
+    const QUrl url(rootPath);
+    const QString dir = url.path().isEmpty() ? QStringLiteral("/") : url.path();
+    const bool showHidden = m_showHidden;
+    QPointer<FileSystemModel> self(this);
+    QThreadPool::globalInstance()->start([self, url, dir, rootPath, generation, showHidden] {
+        QString error;
+        QList<SftpSession::Entry> listed;
+        bool needLogin = false;
+        if (const auto slot = SftpPool::instance().find(url)) {
+            QMutexLocker lock(&slot->mutex);
+            listed = slot->session->list(dir, &error);
+            if (!error.isEmpty() && slot->session->isBroken()) {
+                SftpPool::instance().drop(url);
+                needLogin = true;
+            }
+        } else {
+            needLogin = true;
+        }
+
+        QList<QVariantMap> entries;
+        const QString base = dir.endsWith(QLatin1Char('/')) ? dir : dir + QLatin1Char('/');
+        QMimeDatabase mimes;
+        for (const SftpSession::Entry &e : std::as_const(listed)) {
+            if (!showHidden && e.name.startsWith(QLatin1Char('.')))
+                continue;
+            QUrl child(url);
+            child.setPath(base + e.name);
+            const QString contentType = e.isDir
+                ? QStringLiteral("inode/directory")
+                : mimes.mimeTypeForFile(e.name, QMimeDatabase::MatchExtension).name();
+            QVariantMap entry;
+            entry[QStringLiteral("fileName")] = e.name;
+            entry[QStringLiteral("filePath")] = child.toString(QUrl::FullyEncoded);
+            entry[QStringLiteral("fileSize")] = e.isDir ? QVariant(qint64(-1)) : QVariant(e.size);
+            entry[QStringLiteral("fileSizeText")] = e.isDir ? QString() : formattedSize(e.size);
+            entry[QStringLiteral("fileType")] = fileTypeForEntry(e.name, e.isDir, contentType);
+            entry[QStringLiteral("fileModified")] = e.modified;
+            entry[QStringLiteral("fileModifiedText")] = e.modified.isValid()
+                ? QLocale().toString(e.modified, QLocale::ShortFormat) : QString();
+            entry[QStringLiteral("filePermissions")] = permissionsStringFromMode(int(e.permissions & 0777));
+            entry[QStringLiteral("isDir")] = e.isDir;
+            entry[QStringLiteral("isSymlink")] = e.isSymLink;
+            entry[QStringLiteral("fileIconName")] = iconNameForEntry(e.name, e.isDir, contentType);
+            entry[QStringLiteral("mimeType")] = contentType;
+            entry[QStringLiteral("symlinkTarget")] = QString();
+            entries.append(entry);
+        }
+
+        QMetaObject::invokeMethod(qApp, [self, rootPath, generation, needLogin, error, entries]() mutable {
+            if (!self || generation != self->m_remoteReloadGeneration)
+                return;
+            if (needLogin || !error.isEmpty()) {
+                self->setIsLoading(false);
+                if (needLogin)
+                    emit self->remoteLoginRequired(rootPath);
+                return;
+            }
+            self->applyRemoteEntries(rootPath, std::move(entries));
+        }, Qt::QueuedConnection);
+    });
+}
+#endif
