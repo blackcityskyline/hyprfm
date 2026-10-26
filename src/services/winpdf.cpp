@@ -1,5 +1,6 @@
 // C++/WinRT first: Qt's keyword macros (emit, signals, slots) must not be
 // defined while the WinRT projection headers are parsed.
+#include <windows.h>
 #include <winrt/Windows.Data.Pdf.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Graphics.Imaging.h>
@@ -69,6 +70,13 @@ QByteArray renderPageJpeg(const QString &path, int pageIndex, const QSize &size)
         else if (size.height() > 0 && pageSize.Height > 0)
             scale = size.height() / double(pageSize.Height);
 
+        // Page geometry comes from the file: cap the bitmap so a hostile
+        // page size cannot make the renderer allocate gigabytes.
+        constexpr double maxSide = 4096.0;
+        const double longest = qMax(double(pageSize.Width), double(pageSize.Height));
+        if (longest * scale > maxSide)
+            scale = maxSide / longest;
+
         PdfPageRenderOptions options;
         options.DestinationWidth(uint32_t(qMax(1.0, pageSize.Width * scale)));
         options.DestinationHeight(uint32_t(qMax(1.0, pageSize.Height * scale)));
@@ -76,7 +84,10 @@ QByteArray renderPageJpeg(const QString &path, int pageIndex, const QSize &size)
 
         InMemoryRandomAccessStream stream;
         page.RenderToStreamAsync(stream, options).get();
-        const uint32_t bytes = uint32_t(stream.Size());
+        const uint64_t size64 = stream.Size();
+        if (size64 == 0 || size64 > 64u * 1024 * 1024)
+            return {};
+        const uint32_t bytes = uint32_t(size64);
         DataReader reader(stream.GetInputStreamAt(0));
         reader.LoadAsync(bytes).get();
         QByteArray jpeg(int(bytes), Qt::Uninitialized);

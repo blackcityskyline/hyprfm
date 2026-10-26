@@ -31,9 +31,11 @@ if(WIN32)
     list(APPEND HYPRFM_SOURCES services/wintransferworker.cpp services/winshell.cpp
                                models/devicemodel_win.cpp services/xdgtrash_win.cpp
                                services/winpdf.cpp)
-    # C++/WinRT headers must come before Qt's keyword macros.
+    # C++/WinRT headers must come before Qt's keyword macros, and need C++20
+    # coroutines; the later /std flag wins, so only this file moves to C++20.
     set_source_files_properties(services/winpdf.cpp PROPERTIES
-        SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON)
+        SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON
+        COMPILE_OPTIONS "/std:c++20")
 else()
     list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp services/xdgtrash.cpp)
 endif()
