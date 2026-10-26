@@ -79,7 +79,7 @@ Set-Theme 'catppuccin-mocha'
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 function Shot($name) {
-    Start-Sleep -Milliseconds 700
+    Start-Sleep -Milliseconds 1000
     $bmp = New-Object Drawing.Bitmap $screen.Width, $screen.Height
     $g = [Drawing.Graphics]::FromImage($bmp)
     $g.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
@@ -88,17 +88,21 @@ function Shot($name) {
     $bmp.Dispose()
     "shot $name"
 }
-function Keys($k, $pause = 600) {
+function Keys($k, $pause = 1000) {
     [U32]::SetForegroundWindow($script:hwnd) | Out-Null
     [Windows.Forms.SendKeys]::SendWait($k)
     Start-Sleep -Milliseconds $pause
 }
-function Click($x, $y) {
+function Click($x, $y, $down = 0x2, $up = 0x4) {
+    [U32]::SetForegroundWindow($script:hwnd) | Out-Null
     [U32]::SetCursorPos($x, $y) | Out-Null
-    [U32]::mouse_event(0x2, 0, 0, 0, [UIntPtr]::Zero)
-    [U32]::mouse_event(0x4, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 400
+    [U32]::mouse_event($down, 0, 0, 0, [UIntPtr]::Zero)
+    [U32]::mouse_event($up, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 800
 }
+function RightClick($x, $y) { Click $x $y 0x8 0x10 }
+# Empty area below the grid: focuses the view and dismisses any popup.
+function ClickEmpty { Click $script:cx ($script:screen.Height - 90) }
 function Wheel($x, $y, $clicks) {
     [U32]::SetCursorPos($x, $y) | Out-Null
     for ($i = 0; $i -lt [Math]::Abs($clicks); $i++) {
@@ -125,22 +129,22 @@ $script:hwnd = $p.MainWindowHandle
 [U32]::MoveWindow($hwnd, 0, 0, $screen.Width, $screen.Height, $true) | Out-Null
 [U32]::ShowWindow($hwnd, 3) | Out-Null   # SW_MAXIMIZE
 Start-Sleep -Seconds 4
-$cx = [int]($screen.Width * 0.6); $cy = [int]($screen.Height * 0.55)
+$script:cx = [int]($screen.Width * 0.6); $cy = [int]($screen.Height * 0.55)
 
 Shot '01-grid-dark'
-Click $cx ($screen.Height - 60)                # empty area: focus the view
+ClickEmpty
 Keys '^3' 1200; Shot '02-detailed-view'
 Keys '^2' 1200; Shot '03-miller-view'
 Keys '^1' 1200
 
 Go "$demo\Pictures"; Shot '04-pictures-thumbnails'
-Keys '{RIGHT}' 400; Keys ' ' 1500; Shot '05-quick-preview-image'
-Keys '{ESC}' 800
+Click 282 130; Keys ' ' 1500; Shot '05-quick-preview-image'
+Keys '{ESC}' 1000; ClickEmpty
 
 Go $demo
-Keys '{HOME}' 300
-Keys '+{F10}' 1000; Shot '06-context-menu'
-Keys '{ESC}' 600
+RightClick 282 297; Shot '06-context-menu'
+Keys '{ESC}' 1000; Shot '06b-context-menu-after-esc'   # does Esc close it?
+ClickEmpty
 
 Keys '^,' 1500; Shot '07-settings'
 Keys '{ESC}' 800
@@ -150,8 +154,8 @@ Keys '{F3}' 1000
 
 Go 'trash:///'; Shot '09-recycle-bin'
 
-Go "$demo\Archives"; Keys '{HOME}' 300; Keys ' ' 1500; Shot '10-archive-preview'
-Keys '{ESC}' 800
+Go "$demo\Archives"; Click 282 130; Keys ' ' 1500; Shot '10-archive-preview'
+Keys '{ESC}' 1000; ClickEmpty
 
 # ── Clips ───────────────────────────────────────────────────────────────────
 Go $demo
@@ -161,7 +165,7 @@ Stop-Clip
 
 Start-Clip 'clip-2-navigate-and-preview' 10
 Go "$demo\Pictures"
-Keys '{RIGHT}' 500; Keys ' ' 1500; Keys '{RIGHT}' 900; Keys '{RIGHT}' 900; Keys '{ESC}' 700
+Click 282 130; Keys ' ' 1500; Keys '{RIGHT}' 1000; Keys '{RIGHT}' 1000; Keys '{ESC}' 1000
 Keys '%{UP}' 1200
 Stop-Clip
 
