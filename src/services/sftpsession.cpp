@@ -708,6 +708,22 @@ qint64 treeSizeIn(SftpSession &s, const QString &path)
     return total;
 }
 
+// A name from the server, written to disk here. A hostile server can send
+// "..\\x", "C:x" or ".. " (Windows drops trailing dots and spaces, so that
+// becomes ".."); none of those may leave the folder being downloaded into.
+bool safeLocalName(const QString &name)
+{
+    static const QString forbidden = QStringLiteral("<>:\"/\\|?*");
+    if (name.isEmpty() || name == QLatin1String(".") || name == QLatin1String("..")
+        || name.endsWith(QLatin1Char('.')) || name.endsWith(QLatin1Char(' ')))
+        return false;
+    for (const QChar c : name) {
+        if (c.unicode() < 32 || forbidden.contains(c))
+            return false;
+    }
+    return true;
+}
+
 bool downloadIn(SftpSession &s, const QString &path, const QString &local,
                 const SftpSession::Progress &progress, QString *error)
 {
@@ -726,6 +742,11 @@ bool downloadIn(SftpSession &s, const QString &path, const QString &local,
     for (const SftpSession::Entry &e : entries) {
         if (e.isSymLink && e.isDir)
             continue;   // never follow folder links out of the tree
+        if (!safeLocalName(e.name)) {
+            *error = QStringLiteral("%1 has a name Windows cannot store: %2")
+                         .arg(path, e.name);
+            return false;
+        }
         if (!downloadIn(s, childPath(path, e.name), local + QLatin1Char('/') + e.name, progress, error))
             return false;
     }
@@ -815,6 +836,11 @@ bool download(const QString &uri, const QString &localPath, const SftpSession::P
               QString *error)
 {
     const QUrl url(uri);
+    const QString name = pathOf(url).section(QLatin1Char('/'), -1);
+    if (!safeLocalName(name)) {
+        *error = QStringLiteral("%1 has a name Windows cannot store").arg(uri);
+        return false;
+    }
     return withSession(url, [&](SftpSession &s, QString *e) {
         return downloadIn(s, pathOf(url), localPath, progress, e);
     }, error);

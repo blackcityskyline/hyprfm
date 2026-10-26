@@ -43,6 +43,21 @@ private slots:
         QVERIFY(m_tmp.isValid());
     }
 
+    // A server's names must not lead a download out of the target folder
+    // (Windows turns ".. " into "..").
+    void testHostileNamesAreNotDownloaded()
+    {
+        for (const QString &name : {QStringLiteral(".. "), QStringLiteral("a\\..\\b"),
+                                    QStringLiteral("C:x"), QStringLiteral("x.")}) {
+            QString error;
+            QVERIFY(!SftpFs::download(QStringLiteral("sftp://nobody@") + m_host + QStringLiteral("/tmp/")
+                                          + QString::fromLatin1(QUrl::toPercentEncoding(name)),
+                                      m_tmp.filePath(QStringLiteral("out")), {}, &error));
+            QVERIFY2(error.contains(QLatin1String("cannot store")), qPrintable(name + ": " + error));
+        }
+        QVERIFY(!QFileInfo::exists(m_tmp.filePath(QStringLiteral("out"))));
+    }
+
     // First sight is Unknown, trusting appends one line, and from then on the
     // same key is Known; a different key for the host is Changed, never Known.
     void testHostKeyIsCheckedAgainstKnownHosts()
