@@ -65,6 +65,38 @@ Set-Content (Join-Path $demo 'Documents\budget.csv') "month,amount`r`njan,120`r`
 Set-Content (Join-Path $demo 'Documents\letter.txt') 'Dear reader, this is a letter.'
 foreach ($n in 1..30) { Set-Content (Join-Path $demo ('Music\track-{0:d2}.txt' -f $n)) "track $n" }
 Compress-Archive -Path (Join-Path $demo 'Projects\*') -DestinationPath (Join-Path $demo 'Archives\projects.zip')
+# One of every previewable kind, side by side so Quick Preview can step
+# through them with Right. Folders sort first, then files by name.
+$prev = Join-Path $demo 'Previews'
+New-Item -ItemType Directory -Force (Join-Path $prev 'Photos') | Out-Null
+Copy-Item (Join-Path $demo 'Pictures\wallpaper-2.png') (Join-Path $prev 'Photos\beach.png')
+Copy-Item (Join-Path $demo 'Pictures\wallpaper-4.png') (Join-Path $prev 'Photos\sunset.png')
+Copy-Item (Join-Path $demo 'Pictures\wallpaper-3.png') (Join-Path $prev 'photo.png')
+Copy-Item (Join-Path $demo 'Documents\budget.csv') (Join-Path $prev 'budget.csv')
+Copy-Item (Join-Path $demo 'Projects\hyprfm\main.cpp') (Join-Path $prev 'main.cpp')
+Copy-Item (Join-Path $demo 'README.md') (Join-Path $prev 'notes.md')
+Copy-Item (Join-Path $demo 'notes.txt') (Join-Path $prev 'shopping.txt')
+Compress-Archive -Path (Join-Path $demo 'Projects\*') -DestinationPath (Join-Path $prev 'projects.zip')
+& ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=30 -t 5 `
+    -c:v libx264 -pix_fmt yuv420p (Join-Path $prev 'clip.mp4')
+# A one-page PDF by hand: objects, then an xref of their byte offsets.
+$text = "0.12 0.4 0.96 rg 72 420 468 200 re f`n" +
+        "BT /F1 36 Tf 72 700 Td (HyprFM on Windows) Tj ET`n" +
+        "BT /F1 16 Tf 72 660 Td (Rendered by Windows.Data.Pdf, no poppler) Tj ET"
+$objs = @(
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    "<< /Length $($text.Length) >>`nstream`n$text`nendstream",
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+$pdf = "%PDF-1.4`n"; $offsets = @()
+for ($i = 0; $i -lt $objs.Count; $i++) { $offsets += $pdf.Length; $pdf += "$($i + 1) 0 obj`n$($objs[$i])`nendobj`n" }
+$xref = $pdf.Length
+$pdf += "xref`n0 $($objs.Count + 1)`n0000000000 65535 f `n"
+foreach ($o in $offsets) { $pdf += "{0:d10} 00000 n `n" -f $o }
+$pdf += "trailer`n<< /Size $($objs.Count + 1) /Root 1 0 R >>`nstartxref`n$xref`n%%EOF`n"
+[IO.File]::WriteAllText((Join-Path $prev 'document.pdf'), $pdf, [Text.Encoding]::ASCII)
+
 # Something in the Recycle Bin for the trash view.
 $doomed = Join-Path $demo 'old-draft.txt'
 Set-Content $doomed 'deleted on purpose'
@@ -133,10 +165,9 @@ $script:cx = [int]($screen.Width * 0.6); $cy = [int]($screen.Height * 0.55)
 
 Shot '01-grid-dark'
 ClickEmpty
-# Toolbar view buttons at 1024 px wide: grid 799, Miller 827, detailed 855.
-Click 855 45; Shot '02-detailed-view'
-Click 827 45; Click 248 109; Shot '03-miller-view'   # open Archives column
-Click 799 45; ClickEmpty
+Keys '^2' 1500; Shot '03-miller-view'
+Keys '^3' 1500; Shot '02-detailed-view'
+Keys '^1' 1200; ClickEmpty
 
 Go "$demo\Pictures"; Shot '04-pictures-thumbnails'
 Click 282 130; Keys ' ' 1500; Shot '05-quick-preview-image'
@@ -158,7 +189,23 @@ Go 'trash:///'; Shot '09-recycle-bin'
 Go "$demo\Archives"; Click 282 130; Keys ' ' 1500; Shot '10-archive-preview'
 Keys '{ESC}' 1000; ClickEmpty
 
+# ── Quick Preview of every kind ─────────────────────────────────────────────
+$kinds = 'folder', 'csv', 'video', 'pdf', 'code', 'markdown', 'image', 'zip', 'text'
+Go $prev; Click 282 130; Keys ' ' 2500
+for ($i = 0; $i -lt $kinds.Count; $i++) {
+    Shot ('p{0:d2}-preview-{1}' -f ($i + 1), $kinds[$i])
+    Keys '{RIGHT}' 2500
+}
+Keys '{ESC}' 1000; ClickEmpty
+
 # ── Clips ───────────────────────────────────────────────────────────────────
+Start-Clip 'clip-0-preview-tour' 30
+Click 282 130; Keys ' ' 2500
+foreach ($k in $kinds) { Keys '{RIGHT}' 2800 }
+Keys '{ESC}' 1000
+Stop-Clip
+ClickEmpty
+
 Go $demo
 Start-Clip 'clip-1-view-switching' 8
 Keys '^3' 1500; Keys '^2' 1500; Keys '^1' 1500; Keys '^3' 1500
