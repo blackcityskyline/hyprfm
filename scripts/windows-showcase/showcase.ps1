@@ -14,6 +14,8 @@ public static class U32 {
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, int data, UIntPtr extra);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
 }
 '@
 
@@ -155,6 +157,14 @@ function Go($path) { Keys '^l' 500; Keys ($path -replace '([+^%~(){}\[\]])', '{$
 # ── Launch ──────────────────────────────────────────────────────────────────
 # The view's translucent surfaces show what is behind the window: the
 # runner's console otherwise, the wallpaper after this.
+# The runner pops up a "System Properties" paging-file notice at boot that
+# takes keyboard focus from HyprFM; close it.
+for ($i = 0; $i -lt 10; $i++) {
+    $box = [U32]::FindWindow($null, 'System Properties')
+    if ($box -eq [IntPtr]::Zero) { break }
+    [U32]::PostMessage($box, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # WM_CLOSE
+    Start-Sleep -Milliseconds 500
+}
 (New-Object -ComObject Shell.Application).MinimizeAll()
 Start-Sleep -Seconds 1
 $p = Start-Process $Exe -ArgumentList "`"$demo`"" -PassThru `
