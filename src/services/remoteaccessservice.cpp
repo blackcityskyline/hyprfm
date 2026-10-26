@@ -110,7 +110,10 @@ void RemoteAccessService::connectToLocation(const QString &uri)
                      QStringLiteral("/persistent:no")};
     if (!url.userName().isEmpty())
         args.append(QStringLiteral("/user:") + url.userName());
-    process->start(QStringLiteral("net"), args);
+    // Full path: CreateProcess would try the current directory first.
+    process->start(QDir::fromNativeSeparators(qEnvironmentVariable("SystemRoot", QStringLiteral("C:\\Windows")))
+                       + QStringLiteral("/System32/net.exe"),
+                   args);
     // Never wait on net's own password prompt; a refused login fails instead.
     process->closeWriteChannel();
 #else
