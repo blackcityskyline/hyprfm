@@ -81,6 +81,35 @@ private slots:
         QVERIFY(!img.isNull());
     }
 
+#ifdef Q_OS_WIN
+    // No Adwaita on Windows: folder and file-type icons come from the shell
+    // and must actually draw something (the grid showed blank tiles).
+    void testWindowsShellIconsDrawSomething_data()
+    {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<int>("px");
+        QTest::newRow("folder 64") << "folder" << 64;
+        QTest::newRow("text 48") << "text-plain" << 48;
+        QTest::newRow("pdf 128") << "application-pdf" << 128;
+        QTest::newRow("unknown 32") << "x-made-up-type" << 32;
+    }
+
+    void testWindowsShellIconsDrawSomething()
+    {
+        QFETCH(QString, name);
+        QFETCH(int, px);
+        IconProvider provider("NoSuchThemeHere");
+        QSize size;
+        const QImage img = provider.requestImage(name, &size, QSize(px, px));
+        QCOMPARE(img.width(), px);
+        int opaque = 0;
+        for (int y = 0; y < img.height(); ++y)
+            for (int x = 0; x < img.width(); ++x)
+                opaque += qAlpha(img.pixel(x, y)) > 0;
+        QVERIFY2(opaque > px * px / 10, qPrintable(QString::number(opaque)));
+    }
+#endif
+
     void testDefaultSizeWhenNotRequested()
     {
         IconProvider provider("Adwaita");

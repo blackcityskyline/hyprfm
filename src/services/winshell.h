@@ -31,6 +31,11 @@ QString setWallpaper(const QString &path);
 // from worker threads.
 QImage shellThumbnail(const QString &path, const QSize &size);
 
+// The icon Explorer shows for a file type, from a freedesktop icon name
+// ("folder", "image-png", "application-pdf"); null when there is none. There
+// are no icon themes on Windows, so file icons come from here.
+QImage typeIcon(const QString &iconName, int size);
+
 // Native folder picker; empty when cancelled.
 QString pickFolder(const QString &title, const QString &startFolder, const QString &okLabel);
 

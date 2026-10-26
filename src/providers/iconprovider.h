@@ -15,6 +15,9 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QDebug>
+#ifdef Q_OS_WIN
+#include "services/winshell.h"
+#endif
 
 class IconProvider : public QQuickImageProvider
 {
@@ -121,6 +124,17 @@ public:
                 remember(cacheKey, empty);
                 return empty;
             }
+#ifdef Q_OS_WIN
+            // Windows ships no icon themes: unless the user installed one,
+            // file icons are the shell's, as in Explorer.
+            const QImage shellIcon = WinShell::typeIcon(iconName, sz);
+            if (!shellIcon.isNull()) {
+                if (size)
+                    *size = shellIcon.size();
+                remember(cacheKey, shellIcon);
+                return shellIcon;
+            }
+#endif
             // File icon: try fallback themes
             svgPath = findIconIn(iconName, sz, fallbackDirs);
             if (svgPath.isEmpty())

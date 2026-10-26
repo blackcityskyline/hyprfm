@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QMimeDatabase>
 #include <QGuiApplication>
 #include <QWindow>
 
@@ -10,6 +11,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <winioctl.h>
+#include <commoncontrols.h>
 
 namespace {
 
@@ -170,6 +172,63 @@ QString pickFolder(const QString &title, const QString &startFolder, const QStri
     const QString folder = QDir::fromNativeSeparators(QString::fromWCharArray(chosen));
     CoTaskMemFree(chosen);
     return folder;
+}
+
+QImage typeIcon(const QString &iconName, int size)
+{
+    ComScope com;   // image providers call in from pool threads
+    // The shell picks icons by name and attributes, so a made-up name with
+    // the type's extension is enough; nothing is read from disk.
+    QString name = QStringLiteral("file");
+    DWORD attributes = FILE_ATTRIBUTE_NORMAL;
+    if (iconName.startsWith(QLatin1String("folder")) || iconName == QLatin1String("inode-directory")) {
+        name = QStringLiteral("folder");
+        attributes = FILE_ATTRIBUTE_DIRECTORY;
+    } else if (const int dash = iconName.indexOf(QLatin1Char('-')); dash > 0) {
+        // Icon names are MIME types with the first '/' turned into '-'.
+        const QMimeType mime = QMimeDatabase().mimeTypeForName(
+            iconName.left(dash) + QLatin1Char('/') + iconName.mid(dash + 1));
+        if (mime.isValid() && !mime.preferredSuffix().isEmpty())
+            name += QLatin1Char('.') + mime.preferredSuffix();
+    }
+
+    SHFILEINFOW info{};
+    if (!SHGetFileInfoW(reinterpret_cast<const wchar_t *>(name.utf16()), attributes, &info,
+                        sizeof info, SHGFI_USEFILEATTRIBUTES | SHGFI_SYSICONINDEX))
+        return {};
+
+    const auto fromList = [&info](int list) {
+        IImageList *images = nullptr;
+        if (FAILED(SHGetImageList(list, __uuidof(IImageList), reinterpret_cast<void **>(&images))))
+            return QImage();
+        HICON icon = nullptr;
+        images->GetIcon(info.iIcon, ILD_TRANSPARENT, &icon);
+        images->Release();
+        if (!icon)
+            return QImage();
+        QImage image = QImage::fromHICON(icon);
+        DestroyIcon(icon);
+        return image;
+    };
+
+    QImage image;
+    if (size > 48) {
+        // ponytail: a type with no 256 px icon comes back as its 48 px icon in
+        // the top-left corner of the jumbo image; anything drawn past 64 px
+        // means it is real, else use the 48 px one scaled.
+        image = fromList(SHIL_JUMBO);
+        bool real = false;
+        for (int y = 0; y < image.height() && !real; ++y)
+            for (int x = 64; x < image.width() && !real; ++x)
+                real = qAlpha(image.pixel(x, y)) > 0;
+        if (!real)
+            image = {};
+    }
+    if (image.isNull())
+        image = fromList(size > 32 ? SHIL_EXTRALARGE : size > 16 ? SHIL_LARGE : SHIL_SMALL);
+    if (image.isNull() || image.width() == size)
+        return image;
+    return image.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
 } // namespace WinShell
