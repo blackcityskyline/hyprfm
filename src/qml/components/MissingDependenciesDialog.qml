@@ -67,7 +67,8 @@ Q.Dialog {
                 Text {
                     Layout.fillWidth: true
                     text: dependencies
-                        ? "Detected distribution: <b>" + dependencies.distroName + "</b>"
+                        ? (Qt.platform.os === "windows" ? "System: <b>" : "Detected distribution: <b>")
+                          + dependencies.distroName + "</b>"
                         : "Detected distribution: unknown"
                     color: Theme.text
                     font.pointSize: Theme.fontNormal

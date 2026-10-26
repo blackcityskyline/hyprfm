@@ -95,6 +95,11 @@ void DependencyChecker::refresh()
 
 void DependencyChecker::detectDistro()
 {
+#ifdef Q_OS_WIN
+    m_distroId = QStringLiteral("windows");
+    m_distroName = QStringLiteral("Windows");
+    return;
+#endif
     // Prefer the host os-release when running under Flatpak, so the install
     // command we show matches the distro outside the sandbox.
     const QStringList candidates = {
@@ -166,9 +171,42 @@ void DependencyChecker::populate()
 {
     m_deps.clear();
 #ifdef Q_OS_WIN
-    // Every entry below is a Linux package with distro install hints. Windows
-    // has its own copy/trash/device backends, so there is nothing to report,
-    // and the startup nag would cover the window on every launch.
+    // Windows has its own copy/trash/device/archive/PDF backends, so only the
+    // optional helpers are listed, all with winget hints. None is required,
+    // so the startup check (required only) never opens over the window.
+    const auto tool = [this](const QString &id, const QString &name, const QString &purpose,
+                             const QStringList &commands, const QString &wingetId) {
+        bool found = false;
+        for (const QString &c : commands)
+            found = found || hasExecutable(c);
+        m_deps.append({id, name, purpose, Kind::Tool, false, found, commands,
+                       {{QStringLiteral("windows"),
+                         QStringLiteral("winget install --id %1 -e").arg(wingetId)}}});
+    };
+    tool(QStringLiteral("fd"), QStringLiteral("fd (file finder)"),
+         QStringLiteral("Fast recursive file search in the search bar."),
+         {QStringLiteral("fd")}, QStringLiteral("sharkdp.fd"));
+    tool(QStringLiteral("bat"), QStringLiteral("bat"),
+         QStringLiteral("Syntax-highlighted text previews."),
+         {QStringLiteral("bat")}, QStringLiteral("sharkdp.bat"));
+    tool(QStringLiteral("ffmpeg"), QStringLiteral("FFmpeg"),
+         QStringLiteral("Video thumbnails for formats Windows has no codec for."),
+         {QStringLiteral("ffmpeg")}, QStringLiteral("Gyan.FFmpeg"));
+    tool(QStringLiteral("ffprobe"), QStringLiteral("Audio/video metadata (ffprobe)"),
+         QStringLiteral("Read tags, duration, codec, and resolution from audio and video."),
+         {QStringLiteral("ffprobe")}, QStringLiteral("Gyan.FFmpeg"));
+    tool(QStringLiteral("7zip"), QStringLiteral("7-Zip"),
+         QStringLiteral("Create .7z archives and open password-protected ones."),
+         {QStringLiteral("7z")}, QStringLiteral("7zip.7zip"));
+    tool(QStringLiteral("git"), QStringLiteral("git"),
+         QStringLiteral("Show git status badges on files and folders."),
+         {QStringLiteral("git")}, QStringLiteral("Git.Git"));
+    tool(QStringLiteral("exiftool"), QStringLiteral("EXIF metadata (exiftool)"),
+         QStringLiteral("Read camera, GPS and timestamp metadata from images."),
+         {QStringLiteral("exiftool")}, QStringLiteral("OliverBetz.ExifTool"));
+    tool(QStringLiteral("rclone"), QStringLiteral("rclone"),
+         QStringLiteral("Mount cloud storage services (Google Drive, OneDrive, etc.)."),
+         {QStringLiteral("rclone")}, QStringLiteral("Rclone.Rclone"));
     return;
 #endif
 
