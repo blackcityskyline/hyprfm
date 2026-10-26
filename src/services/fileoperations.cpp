@@ -1840,8 +1840,9 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
         QString error;
         if (!moveLocationSync(op.sourcePath, op.tempPath, &error)) {
             rollback();
-            return renameResult(false, QStringLiteral("Could not prepare %1 for renaming")
-                .arg(locationFileName(op.sourcePath)));
+            return renameResult(false, QStringLiteral("Could not prepare %1 for renaming%2")
+                .arg(locationFileName(op.sourcePath))
+                .arg(error.isEmpty() ? QString() : QStringLiteral(": ") + error));
         }
 
         stagedIndices.append(i);
@@ -1852,8 +1853,9 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
         QString error;
         if (!moveLocationSync(op.tempPath, op.targetPath, &error)) {
             rollback();
-            return renameResult(false, QStringLiteral("Could not rename %1")
-                .arg(locationFileName(op.sourcePath)));
+            return renameResult(false, QStringLiteral("Could not rename %1%2")
+                .arg(locationFileName(op.sourcePath))
+                .arg(error.isEmpty() ? QString() : QStringLiteral(": ") + error));
         }
 
         finalizedIndices.append(i);

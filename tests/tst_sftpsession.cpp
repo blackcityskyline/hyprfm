@@ -298,7 +298,9 @@ private slots:
         QVERIFY2(setup.stat(remoteDir + "/inner/b.txt", &info, &error), qPrintable(error));
         QCOMPARE(info.size, qint64(200000));
 
-        QVERIFY(ops.rename(base + "/pack", "pack2"));
+        const QVariantMap renamed = ops.renameResolvedItems(
+            {QVariantMap {{"sourcePath", base + "/pack"}, {"targetPath", base + "/pack2"}}});
+        QVERIFY2(renamed.value("success").toBool(), qPrintable(renamed.value("error").toString()));
         QVERIFY(!setup.stat(remoteDir, &info, &error));
         ops.createFolder(base + "/pack2", "made");
         QVERIFY2(setup.stat(home + "/pack2/made", &info, &error) && info.isDir, qPrintable(error));
