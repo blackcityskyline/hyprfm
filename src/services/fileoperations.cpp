@@ -560,8 +560,8 @@ QVariantMap remotePathInfo(const QString &path)
 }
 
 #else
-// No gvfs on Windows: remote URIs never reach the GIO paths below.
-bool gioPathExists(const QString &) { return false; }
+// No gvfs on Windows; SFTP goes through the built-in session pool.
+bool gioPathExists(const QString &path) { return SftpFs::exists(path); }
 QVariantMap remotePathInfo(const QString &) { return {}; }
 #endif
 
