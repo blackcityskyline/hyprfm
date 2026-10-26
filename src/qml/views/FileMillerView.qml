@@ -1309,7 +1309,8 @@ FocusScope {
             readonly property bool isAudio: !isRemoteUri && !previewIsDir && (_mime.startsWith("audio/") || false)
             readonly property bool isPdf: !isRemoteUri && !previewIsDir && _mime === "application/pdf"
             readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
-            readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
+            // Windows takes video frames from the shell (thumbnailprovider.cpp).
+            readonly property bool videoPreviewAvailable: Qt.platform.os === "windows" || runtimeFeatures.ffmpegAvailable
             readonly property bool textHighlightAvailable: runtimeFeatures.batAvailable
             readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
             readonly property string visualSource: {

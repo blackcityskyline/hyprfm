@@ -185,7 +185,8 @@ Item {
     }
 
     readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
-    readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
+    // Windows takes video frames from the shell (thumbnailprovider.cpp).
+    readonly property bool videoPreviewAvailable: Qt.platform.os === "windows" || runtimeFeatures.ffmpegAvailable
     readonly property bool textHighlightAvailable: runtimeFeatures.batAvailable
     readonly property string pdfImageSource: {
         if (!isPdf || !pdfPreview.localPath || pdfPreview.error !== "")
