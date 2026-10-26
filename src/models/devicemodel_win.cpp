@@ -51,7 +51,9 @@ QList<DeviceEntry> readDrives()
         DeviceEntry entry;
         const QString label = volume.displayName() == root ? QString() : volume.displayName();
         entry.deviceName = label.isEmpty()
-            ? (type == DRIVE_REMOVABLE ? QStringLiteral("USB Drive (%1)") : QStringLiteral("Local Disk (%1)")).arg(letter)
+            ? (type == DRIVE_REMOVABLE ? QStringLiteral("USB Drive (%1)")
+               : type == DRIVE_REMOTE  ? QStringLiteral("Network Drive (%1)")
+                                       : QStringLiteral("Local Disk (%1)")).arg(letter)
             : QStringLiteral("%1 (%2)").arg(label, letter);
         entry.devicePath = root;
         entry.mountPoint = root;

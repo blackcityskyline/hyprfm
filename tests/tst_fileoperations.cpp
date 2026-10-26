@@ -1439,6 +1439,16 @@ private slots:
     }
 
 #ifdef Q_OS_WIN
+    // A UNC share is a root: going up from it must not land on "//server",
+    // which Windows cannot list. No network needed, only path logic.
+    void testUncShareRootHasNoParent()
+    {
+        FileOperations ops;
+        QCOMPARE(ops.parentPath("//server/share/dir"), QStringLiteral("//server/share"));
+        QCOMPARE(ops.parentPath("//server/share"), QStringLiteral("//server/share"));
+        QCOMPARE(ops.joinPath("//server/share", "dir"), QStringLiteral("//server/share/dir"));
+    }
+
     // Windows has no zip/unzip; both directions go through System32's tar.exe.
     void testZipRoundTripThroughWindowsTar()
     {

@@ -396,6 +396,11 @@ QString parentLocation(const QString &path)
         return base + (slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
     }
 
+#ifdef Q_OS_WIN
+    // "//server/share" is a root like "C:/"; "//server" alone cannot be listed.
+    if (QDir(normalized).isRoot())
+        return normalized;
+#endif
     const QFileInfo info(normalized);
     return info.absolutePath();
 }

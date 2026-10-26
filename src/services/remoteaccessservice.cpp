@@ -89,5 +89,31 @@ void RemoteAccessService::connectToLocation(const QString &uri)
         settle(false, process->errorString());
     });
 
+#ifdef Q_OS_WIN
+    // No GVFS here. Windows opens SMB shares itself as UNC paths; `net use`
+    // connects with the signed-in user's credentials (or the given user) and
+    // reports errors such as an unknown host or a refused login, without
+    // blocking the GUI thread the way probing the path would.
+    const QUrl url(trimmedUri);
+    const QStringList parts = url.path().split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    if (url.scheme() != QStringLiteral("smb") || url.host().isEmpty()) {
+        settle(false, QStringLiteral("On Windows, only SMB shares can be connected so far."));
+        return;
+    }
+    if (parts.isEmpty()) {
+        settle(false, QStringLiteral("Enter the name of a share on %1.").arg(url.host()));
+        return;
+    }
+    m_pendingUri = QStringLiteral("//") + url.host() + QLatin1Char('/') + parts.join(QLatin1Char('/'));
+    QStringList args{QStringLiteral("use"),
+                     QStringLiteral("\\\\%1\\%2").arg(url.host(), parts.first()),
+                     QStringLiteral("/persistent:no")};
+    if (!url.userName().isEmpty())
+        args.append(QStringLiteral("/user:") + url.userName());
+    process->start(QStringLiteral("net"), args);
+    // Never wait on net's own password prompt; a refused login fails instead.
+    process->closeWriteChannel();
+#else
     process->start(QStringLiteral("gio"), {QStringLiteral("mount"), trimmedUri});
+#endif
 }
