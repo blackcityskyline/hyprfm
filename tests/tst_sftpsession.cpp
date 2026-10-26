@@ -1,0 +1,157 @@
+#include <QTest>
+#include <QFile>
+#include <QRandomGenerator>
+#include <QTemporaryDir>
+
+#include "services/sftpsession.h"
+
+// Runs against the OpenSSH server the Windows CI job starts on localhost,
+// logging in with the key it puts in ~/.ssh. Without HYPRFM_SFTP_TEST_HOST
+// everything skips.
+class TestSftpSession : public QObject
+{
+    Q_OBJECT
+
+    QString m_host;
+    QString m_user;
+    QTemporaryDir m_tmp;
+
+    QString knownHosts() const { return m_tmp.path() + "/known_hosts"; }
+
+    // Connected and logged in, trusting the host key on first sight.
+    bool open(SftpSession &s, QString *error)
+    {
+        s.setKnownHostsPath(knownHosts());
+        if (!s.connectToHost(m_host, 22, error))
+            return false;
+        if (s.hostKey() == SftpSession::HostKey::Unknown && !s.trustHostKey(error))
+            return false;
+        return s.authenticate(m_user, QString(), error) == SftpSession::Auth::Ok;
+    }
+
+private slots:
+    void initTestCase()
+    {
+        m_host = qEnvironmentVariable("HYPRFM_SFTP_TEST_HOST");
+        m_user = qEnvironmentVariable("HYPRFM_SFTP_TEST_USER", qEnvironmentVariable("USERNAME"));
+        if (m_host.isEmpty())
+            QSKIP("HYPRFM_SFTP_TEST_HOST not set; no SSH server to test against");
+        QVERIFY(m_tmp.isValid());
+    }
+
+    // First sight is Unknown, trusting appends one line, and from then on the
+    // same key is Known; a different key for the host is Changed, never Known.
+    void testHostKeyIsCheckedAgainstKnownHosts()
+    {
+        QFile::remove(knownHosts());
+        QString error, fingerprint;
+        {
+            SftpSession s;
+            s.setKnownHostsPath(knownHosts());
+            QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
+            QCOMPARE(s.hostKey(&fingerprint), SftpSession::HostKey::Unknown);
+            QVERIFY2(fingerprint.startsWith("SHA256:"), qPrintable(fingerprint));
+            QVERIFY2(s.trustHostKey(&error), qPrintable(error));
+        }
+        QFile file(knownHosts());
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray line = file.readAll().trimmed();
+        file.close();
+        QCOMPARE(line.count('\n'), 0);
+        QVERIFY2(line.startsWith(m_host.toUtf8() + ' '), line.constData());
+        {
+            SftpSession s;
+            s.setKnownHostsPath(knownHosts());
+            QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
+            QCOMPARE(s.hostKey(), SftpSession::HostKey::Known);
+        }
+
+        // Same host and key type, one byte of the key flipped.
+        QList<QByteArray> parts = line.split(' ');
+        QVERIFY(parts.size() >= 3);
+        QByteArray key = QByteArray::fromBase64(parts[2]);
+        key[key.size() - 5] = char(key[key.size() - 5] ^ 0x5a);
+        parts[2] = key.toBase64();
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(parts.join(' ') + '\n');
+        file.close();
+        {
+            SftpSession s;
+            s.setKnownHostsPath(knownHosts());
+            QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
+            QCOMPARE(s.hostKey(), SftpSession::HostKey::Changed);
+        }
+        QFile::remove(knownHosts());
+    }
+
+    void testWrongPasswordIsRefused()
+    {
+        SftpSession s;
+        s.setKnownHostsPath(knownHosts());
+        QString error;
+        QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
+        // A user with no keys and a wrong password must not get in.
+        QVERIFY(s.authenticate("hyprfm-no-such-user", "wrong", &error) != SftpSession::Auth::Ok);
+    }
+
+    // Upload, list, stat, download, rename and delete, byte for byte.
+    void testFileRoundTrip()
+    {
+        SftpSession s;
+        QString error;
+        QVERIFY2(open(s, &error), qPrintable(error));
+        const QString home = s.homePath(&error);
+        QVERIFY2(!home.isEmpty(), qPrintable(error));
+
+        const QString dir = home + "/hyprfm-sftp-test";
+        s.removeFile(dir + "/renamed.bin", &error);
+        s.removeDir(dir, &error);
+        QVERIFY2(s.makeDir(dir, &error), qPrintable(error));
+
+        QByteArray data(3 * 1024 * 1024 + 123, Qt::Uninitialized);
+        for (char &c : data)
+            c = char(QRandomGenerator::global()->bounded(256));
+        const QString local = m_tmp.path() + "/up.bin";
+        QFile f(local);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(data);
+        f.close();
+
+        qint64 reported = 0;
+        QVERIFY2(s.upload(local, dir + "/data.bin", [&](qint64 done) { reported = done; return true; },
+                          &error), qPrintable(error));
+        QCOMPARE(reported, data.size());
+
+        const QList<SftpSession::Entry> entries = s.list(dir, &error);
+        QCOMPARE(entries.size(), 1);
+        QCOMPARE(entries.first().name, QStringLiteral("data.bin"));
+        QCOMPARE(entries.first().size, data.size());
+        QVERIFY(!entries.first().isDir);
+
+        SftpSession::Entry info;
+        QVERIFY2(s.stat(dir, &info, &error), qPrintable(error));
+        QVERIFY(info.isDir);
+
+        const QString back = m_tmp.path() + "/down.bin";
+        QVERIFY2(s.download(dir + "/data.bin", back, {}, &error), qPrintable(error));
+        QFile d(back);
+        QVERIFY(d.open(QIODevice::ReadOnly));
+        QVERIFY(d.readAll() == data);
+        d.close();
+
+        // A cancelled download leaves nothing behind.
+        const QString cancelled = m_tmp.path() + "/cancelled.bin";
+        QVERIFY(!s.download(dir + "/data.bin", cancelled, [](qint64) { return false; }, &error));
+        QVERIFY(!QFile::exists(cancelled));
+
+        QVERIFY2(s.rename(dir + "/data.bin", dir + "/renamed.bin", &error), qPrintable(error));
+        QVERIFY(!s.stat(dir + "/data.bin", &info, &error));
+        QVERIFY2(!s.removeDir(dir, &error), "removed a folder that is not empty");
+        QVERIFY2(s.removeFile(dir + "/renamed.bin", &error), qPrintable(error));
+        QVERIFY2(s.removeDir(dir, &error), qPrintable(error));
+        QVERIFY(!s.stat(dir, &info, &error));
+    }
+};
+
+QTEST_GUILESS_MAIN(TestSftpSession)
+#include "tst_sftpsession.moc"

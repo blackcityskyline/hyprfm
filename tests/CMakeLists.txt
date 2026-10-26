@@ -177,3 +177,11 @@ endif()
 add_executable(tst_recentfilesmodel tst_recentfilesmodel.cpp)
 target_link_libraries(tst_recentfilesmodel PRIVATE hyprfm_core Qt6::Test Qt6::Core Qt6::Concurrent)
 add_test(NAME tst_recentfilesmodel COMMAND tst_recentfilesmodel)
+
+# SFTP over libssh2 against a real OpenSSH server (Windows CI starts one and
+# sets HYPRFM_SFTP_TEST_HOST); skips without it. Linux uses GVFS instead.
+if(WIN32)
+add_executable(tst_sftpsession tst_sftpsession.cpp)
+target_link_libraries(tst_sftpsession PRIVATE hyprfm_core Qt6::Test Qt6::Core)
+add_test(NAME tst_sftpsession COMMAND tst_sftpsession)
+endif()

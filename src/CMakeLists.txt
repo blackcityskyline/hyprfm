@@ -30,7 +30,7 @@ set(HYPRFM_SOURCES
 if(WIN32)
     list(APPEND HYPRFM_SOURCES services/wintransferworker.cpp services/winshell.cpp
                                models/devicemodel_win.cpp services/xdgtrash_win.cpp
-                               services/winpdf.cpp)
+                               services/winpdf.cpp services/sftpsession.cpp)
     # C++/WinRT headers must come before Qt's keyword macros, and need C++20
     # coroutines; the later /std flag wins, so only this file moves to C++20.
     set_source_files_properties(services/winpdf.cpp PROPERTIES
@@ -261,7 +261,8 @@ target_link_libraries(hyprfm_core PUBLIC
     Qt6::Concurrent
 )
 if(WIN32)
-    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32 gdi32 windowsapp)
+    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32 gdi32 windowsapp
+                                             libssh2::libssh2_static ws2_32 crypt32 bcrypt)
 else()
     target_link_libraries(hyprfm_core PUBLIC Qt6::DBus PkgConfig::GIO)
 endif()

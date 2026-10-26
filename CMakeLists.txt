@@ -23,6 +23,23 @@ if(MSVC)
 endif()
 if(WIN32)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+
+    # SFTP on Windows (Linux has GVFS): libssh2 on Windows' own CNG crypto,
+    # linked statically, so the package gains no OpenSSL or other DLLs.
+    enable_language(C)
+    include(FetchContent)
+    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)   # let the set()s below win over its option()s
+    set(CRYPTO_BACKEND WinCNG)
+    set(BUILD_SHARED_LIBS OFF)
+    set(BUILD_STATIC_LIBS ON)
+    set(BUILD_EXAMPLES OFF)
+    set(BUILD_TESTING OFF)
+    set(ENABLE_ZLIB_COMPRESSION OFF)
+    FetchContent_Declare(libssh2
+        URL https://github.com/libssh2/libssh2/releases/download/libssh2-1.11.1/libssh2-1.11.1.tar.gz
+        URL_HASH SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
+        EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(libssh2)
 endif()
 
 add_subdirectory(src)

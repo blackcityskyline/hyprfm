@@ -58,6 +58,27 @@ jobs:
           cmake --build build -- -k 0
           sccache --show-stats
 
+      # A real OpenSSH server on localhost for tst_sftpsession, logging in
+      # with a fresh PEM key (the format libssh2 on CNG reads). The runner
+      # user is an administrator, so sshd takes the key from
+      # administrators_authorized_keys, which must be locked to admins.
+      - name: Start SSH server for SFTP tests
+        shell: pwsh
+        run: |
+          if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
+            Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+          }
+          Start-Service sshd
+          $ssh = Join-Path $env:USERPROFILE '.ssh'
+          New-Item -ItemType Directory -Force $ssh | Out-Null
+          $PSNativeCommandArgumentPassing = 'Standard'   # pass the empty -N '' through
+          ssh-keygen -q -m PEM -t rsa -b 3072 -N '' -f "$ssh\id_rsa"
+          $auth = 'C:\ProgramData\ssh\administrators_authorized_keys'
+          Copy-Item "$ssh\id_rsa.pub" $auth
+          icacls $auth /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' | Out-Null
+          "HYPRFM_SFTP_TEST_HOST=localhost" >> $env:GITHUB_ENV
+          "HYPRFM_SFTP_TEST_USER=$env:USERNAME" >> $env:GITHUB_ENV
+
       - name: Test
         working-directory: build
         run: ctest --output-on-failure --timeout 180 -j 4
@@ -96,6 +117,10 @@ jobs:
         shell: pwsh
         run: |
           cmake --install build
+          # libssh2 is linked in statically; its headers, .lib and docs are
+          # not part of the package.
+          Remove-Item -Recurse -Force stage/include, stage/lib, stage/share/doc, stage/share/man `
+            -ErrorAction SilentlyContinue
           windeployqt --release --qmldir src/qml --no-translations --no-system-d3d-compiler `
             --no-system-dxc-compiler --no-opengl-sw --no-compiler-runtime `
             --skip-plugin-types qmltooling stage/bin/hyprfm.exe
