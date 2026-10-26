@@ -1,4 +1,7 @@
 #include "services/previewservice.h"
+#ifdef Q_OS_WIN
+#include "services/winpdf.h"
+#endif
 #include "services/archivepassword.h"
 
 #include "services/metadataextractor.h"
@@ -662,6 +665,9 @@ QVariantMap PreviewService::buildPreview(const QString &path, const QString &kin
 
 bool PreviewService::pdfPreviewAvailable() const
 {
+#ifdef Q_OS_WIN
+    return true;   // Windows.Data.Pdf, part of Windows 10+
+#endif
     return !QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()
         && !QStandardPaths::findExecutable(QStringLiteral("pdfinfo")).isEmpty();
 }
@@ -981,6 +987,17 @@ QVariantMap PreviewService::loadPdfPreview(const QString &path) const
         result["error"] = QStringLiteral("Install poppler-utils for PDF preview");
         return result;
     }
+
+#ifdef Q_OS_WIN
+    const int pages = WinPdf::pageCount(localPath);
+    if (pages < 0) {
+        result["error"] = QStringLiteral("Unable to open PDF document");
+        return result;
+    }
+    result["localPath"] = localPath;
+    result["pageCount"] = pages;
+    return result;
+#endif
 
     QProcess proc;
     proc.start(QStringLiteral("pdfinfo"), {localPath});

@@ -48,9 +48,11 @@ private:
 private slots:
     void testProviderRendersPdfPage()
     {
+#ifndef Q_OS_WIN   // Windows renders with Windows.Data.Pdf
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
             || QStandardPaths::findExecutable("pdfinfo").isEmpty())
             QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+#endif
 
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -84,9 +86,11 @@ private slots:
     // cache and spawns its own pdftoppm.
     void testConcurrentRequestsForSamePageAgree()
     {
+#ifndef Q_OS_WIN   // Windows renders with Windows.Data.Pdf
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
             || QStandardPaths::findExecutable("pdfinfo").isEmpty())
             QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+#endif
 
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -120,9 +124,11 @@ private slots:
     // pdftoppm, which measured ~70 ms per page.
     void testRepeatRequestIsServedFromCache()
     {
+#ifndef Q_OS_WIN   // Windows renders with Windows.Data.Pdf
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
             || QStandardPaths::findExecutable("pdfinfo").isEmpty())
             QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+#endif
 
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -180,9 +186,11 @@ private slots:
     // not re-render what it already has.
     void testRenderedPageSurvivesANewProvider()
     {
+#ifndef Q_OS_WIN   // Windows renders with Windows.Data.Pdf
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
             || QStandardPaths::findExecutable("pdfinfo").isEmpty())
             QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+#endif
 
         QTemporaryDir cacheDir;
         QVERIFY(cacheDir.isValid());
@@ -206,7 +214,10 @@ private slots:
             first = renderAndWait(provider, id, QSize(400, 500));
         }
         QVERIFY(!first.isNull());
-        QVERIFY(!QDir(cacheDir.path() + QStringLiteral("/hyprfm/pdf-pages"))
+        // XDG_CACHE_HOME is how Linux redirects it; Windows ignores it, so ask
+        // QStandardPaths where the pages really went.
+        QVERIFY(!QDir(QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+                      + QStringLiteral("/hyprfm/pdf-pages"))
                      .entryList({QStringLiteral("*.jpg")}, QDir::Files).isEmpty());
 
         // A provider with an empty in-memory cache still answers from disk.

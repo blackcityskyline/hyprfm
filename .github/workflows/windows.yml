@@ -155,6 +155,7 @@ jobs:
           }
           iscc /Qp "/DAppVersion=$version" "/DStageDir=${{ github.workspace }}\stage" `
                "/Odist-out" dist/windows/hyprfm.iss
+          ''   # iscc /Qp leaves its progress line unterminated
           Get-ChildItem dist-out | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
 
       - name: Upload

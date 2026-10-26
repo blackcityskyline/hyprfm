@@ -29,7 +29,11 @@ set(HYPRFM_SOURCES
 
 if(WIN32)
     list(APPEND HYPRFM_SOURCES services/wintransferworker.cpp services/winshell.cpp
-                               models/devicemodel_win.cpp services/xdgtrash_win.cpp)
+                               models/devicemodel_win.cpp services/xdgtrash_win.cpp
+                               services/winpdf.cpp)
+    # C++/WinRT headers must come before Qt's keyword macros.
+    set_source_files_properties(services/winpdf.cpp PROPERTIES
+        SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON)
 else()
     list(APPEND HYPRFM_SOURCES services/giotransferworker.cpp services/xdgtrash.cpp)
 endif()
@@ -255,7 +259,7 @@ target_link_libraries(hyprfm_core PUBLIC
     Qt6::Concurrent
 )
 if(WIN32)
-    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32)
+    target_link_libraries(hyprfm_core PUBLIC shell32 ole32 shlwapi advapi32 user32 gdi32 windowsapp)
 else()
     target_link_libraries(hyprfm_core PUBLIC Qt6::DBus PkgConfig::GIO)
 endif()

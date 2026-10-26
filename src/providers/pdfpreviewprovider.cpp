@@ -1,4 +1,7 @@
 #include "providers/pdfpreviewprovider.h"
+#ifdef Q_OS_WIN
+#include "services/winpdf.h"
+#endif
 
 #include <QDateTime>
 #include <QFileInfo>
@@ -296,6 +299,34 @@ void PdfPreviewResponse::run()
         emit finished();
         return;
     }
+
+#ifdef Q_OS_WIN
+    if (!looksLikePdf(request.path)) {
+        emit finished();
+        return;
+    }
+    // Windows renders at the requested pixel size, so that (not a dpi) keys
+    // the caches.
+    {
+        const int sizeKey = (qBound(0, m_requestedSize.width(), 0xffff) << 16)
+                            | qBound(0, m_requestedSize.height(), 0xffff);
+        const QString key = renderKey(request.path, request.page, sizeKey);
+        if (tryCache(key) || tryDiskCache(key)) {
+            emit finished();
+            return;
+        }
+        const QByteArray jpeg = WinPdf::renderPageJpeg(request.path, request.page, m_requestedSize);
+        if (!jpeg.isEmpty() && m_image.loadFromData(jpeg, "JPEG")) {
+            {
+                QMutexLocker locker(&renderCacheMutex());
+                renderCache().insert(key, new QImage(m_image), m_image.sizeInBytes());
+            }
+            writeDiskCache(key, jpeg);
+        }
+        emit finished();
+        return;
+    }
+#endif
 
     if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
         emit finished();
