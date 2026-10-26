@@ -323,7 +323,13 @@ void ConfigManager::setDefaults()
     m_radiusSmall = 4;
     m_radiusMedium = 8;
     m_radiusLarge = 12;
+#ifdef Q_OS_WIN
+    // Translucency relies on the compositor blurring what is behind; Windows
+    // does no such blur for this window, so text would sit on the raw desktop.
+    m_transparencyEnabled = false;
+#else
     m_transparencyEnabled = true;
+#endif
     m_transparencyLevel = 1.0;
     m_animationsEnabled = true;
     m_animDurationFast = 100;
@@ -694,7 +700,7 @@ radius_large = 12
 
 # Window transparency (needs compositor blur rules to look good).
 # transparency_level: 0.0 (fully transparent) .. 1.0 (opaque)
-transparency_enabled = true
+transparency_enabled = @TRANSPARENCY@
 transparency_level = 1.0
 
 # Animations. Durations in milliseconds; curves are Qt easing names:
@@ -811,7 +817,12 @@ current_fraction = 0.5
 # settings          = "Ctrl+,"
 # edit_config       = "Ctrl+Shift+,"
 # keyboard_shortcuts = "Ctrl+?"
-)");
+)").replace(QStringLiteral("@TRANSPARENCY@"),
+#ifdef Q_OS_WIN
+                QStringLiteral("false"));
+#else
+                QStringLiteral("true"));
+#endif
 }
 
 // First run: give the user the documented file instead of nothing. Every

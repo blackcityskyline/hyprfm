@@ -252,7 +252,11 @@ private slots:
         QCOMPARE(mgr.sidebarPosition(), QString("left"));
         QCOMPARE(mgr.sidebarWidth(), 200);
         QCOMPARE(mgr.sidebarVisible(), true);
+#ifdef Q_OS_WIN
+        QCOMPARE(mgr.transparencyEnabled(), false);   // no compositor blur
+#else
         QCOMPARE(mgr.transparencyEnabled(), true);
+#endif
         QCOMPARE(mgr.transparencyLevel(), 1.0);
         QCOMPARE(mgr.animationsEnabled(), true);
     }
