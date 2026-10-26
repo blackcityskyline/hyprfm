@@ -80,6 +80,31 @@ private slots:
             s.setKnownHostsPath(knownHosts());
             QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
             QCOMPARE(s.hostKey(), SftpSession::HostKey::Changed);
+            QString refused;
+            QVERIFY(!s.trustHostKey(&refused));   // never overwrite a changed key
+        }
+
+        // Known only under another key type (a made-up blob of another type):
+        // refused like OpenSSH does, not offered for trust as if new. A broken
+        // line before it must not hide it.
+        const QByteArray otherType = parts[1] == "ssh-rsa" ? "ssh-ed25519" : "ssh-rsa";
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write("this line is not a known_hosts entry\n");
+        file.write(m_host.toUtf8() + ' ' + otherType + ' '
+                   + (otherType == "ssh-rsa"
+                          ? QByteArray("AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7") + QByteArray(168, 'A')
+                          : QByteArray("AAAAC3NzaC1lZDI1NTE5AAAAIGb1nN0wQ0VfQ3Jk0k6zv9a6uXJ7Wq3Z1u8o5xJ8yJ9s"))
+                   + '\n');
+        file.close();
+        {
+            SftpSession s;
+            s.setKnownHostsPath(knownHosts());
+            QVERIFY2(s.connectToHost(m_host, 22, &error), qPrintable(error));
+            const SftpSession::HostKey k = s.hostKey();
+            QVERIFY2(k == SftpSession::HostKey::OtherType || k == SftpSession::HostKey::Changed,
+                     qPrintable(QString::number(int(k))));
+            QString refused;
+            QVERIFY(!s.trustHostKey(&refused));
         }
         QFile::remove(knownHosts());
     }

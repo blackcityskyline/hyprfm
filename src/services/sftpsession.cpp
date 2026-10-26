@@ -195,27 +195,61 @@ SftpSession::HostKey SftpSession::hostKey(QString *fingerprint) const
             : QString();
     }
 
-    LIBSSH2_KNOWNHOSTS *hosts = libssh2_knownhost_init(m_session);
+    LIBSSH2_KNOWNHOSTS *hosts = loadKnownHosts();
     if (!hosts)
-        return HostKey::Unknown;
-    // A missing or partly unreadable file just means fewer known hosts.
-    libssh2_knownhost_readfile(hosts, QFile::encodeName(m_knownHosts).constData(),
-                               LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+        return HostKey::Changed;   // cannot check: never treat as trustable
+    const QByteArray host = utf8(m_host);
+    const int plain = LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW;
     struct libssh2_knownhost *match = nullptr;
-    const int check = libssh2_knownhost_checkp(
-        hosts, utf8(m_host).constData(), m_port, key, len,
-        LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW | knownHostKeyBits(type), &match);
+    const int sameType = libssh2_knownhost_checkp(hosts, host.constData(), m_port, key, len,
+                                                  plain | knownHostKeyBits(type), &match);
+    // Without key-type bits libssh2 compares against every entry for the host,
+    // so a host known only under another key type comes back as a mismatch.
+    const int anyType = sameType == LIBSSH2_KNOWNHOST_CHECK_MATCH
+        ? sameType
+        : libssh2_knownhost_checkp(hosts, host.constData(), m_port, key, len, plain, &match);
     libssh2_knownhost_free(hosts);
 
-    if (check == LIBSSH2_KNOWNHOST_CHECK_MATCH)
+    if (sameType == LIBSSH2_KNOWNHOST_CHECK_MATCH)
         return HostKey::Known;
-    if (check == LIBSSH2_KNOWNHOST_CHECK_MISMATCH)
+    if (sameType == LIBSSH2_KNOWNHOST_CHECK_MISMATCH)
         return HostKey::Changed;
-    return HostKey::Unknown;
+    if (anyType == LIBSSH2_KNOWNHOST_CHECK_MISMATCH)
+        return HostKey::OtherType;
+    if (sameType == LIBSSH2_KNOWNHOST_CHECK_NOTFOUND && anyType == LIBSSH2_KNOWNHOST_CHECK_NOTFOUND)
+        return HostKey::Unknown;
+    return HostKey::Changed;   // CHECK_FAILURE: could not compare, refuse
+}
+
+// known_hosts read line by line: libssh2_knownhost_readfile() stops at the
+// first line it cannot parse (certificate authorities, @revoked markers, ...),
+// which would silently forget every host listed after it.
+LIBSSH2_KNOWNHOSTS *SftpSession::loadKnownHosts() const
+{
+    LIBSSH2_KNOWNHOSTS *hosts = m_session ? libssh2_knownhost_init(m_session) : nullptr;
+    if (!hosts)
+        return nullptr;
+    QFile file(m_knownHosts);
+    if (file.open(QIODevice::ReadOnly)) {
+        while (!file.atEnd()) {
+            const QByteArray line = file.readLine();
+            const QByteArray trimmed = line.trimmed();
+            if (trimmed.isEmpty() || trimmed.startsWith('#') || trimmed.startsWith('@'))
+                continue;
+            libssh2_knownhost_readline(hosts, line.constData(), size_t(line.size()),
+                                       LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+        }
+    }
+    return hosts;
 }
 
 bool SftpSession::trustHostKey(QString *error)
 {
+    if (hostKey() != HostKey::Unknown) {
+        *error = QStringLiteral("%1 already has a different key on record; not replacing it")
+                     .arg(m_host);
+        return false;
+    }
     size_t len = 0;
     int type = 0;
     const char *key = m_session ? libssh2_session_hostkey(m_session, &len, &type) : nullptr;
