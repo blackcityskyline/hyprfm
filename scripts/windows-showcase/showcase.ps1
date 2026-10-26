@@ -133,9 +133,10 @@ $script:cx = [int]($screen.Width * 0.6); $cy = [int]($screen.Height * 0.55)
 
 Shot '01-grid-dark'
 ClickEmpty
-Keys '^3' 1200; Shot '02-detailed-view'
-Keys '^2' 1200; Shot '03-miller-view'
-Keys '^1' 1200
+# Toolbar view buttons at 1024 px wide: grid 799, Miller 827, detailed 855.
+Click 855 45; Shot '02-detailed-view'
+Click 827 45; Click 248 109; Shot '03-miller-view'   # open Archives column
+Click 799 45; ClickEmpty
 
 Go "$demo\Pictures"; Shot '04-pictures-thumbnails'
 Click 282 130; Keys ' ' 1500; Shot '05-quick-preview-image'
